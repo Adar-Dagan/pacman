@@ -6,7 +6,7 @@ mod pellets;
 mod characters;
 
 const SCALE: f32 = 2.0;
-const MAX_MOVE_SPEED: f64 = 80.0; // In pixel per second
+const MAX_MOVE_SPEED: f64 = 70.0; // In pixel per second
 
 fn main() {
     App::new()

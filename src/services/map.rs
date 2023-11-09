@@ -1,8 +1,7 @@
-use std::f32::EPSILON;
-
 use bevy::prelude::*;
 
 use strum::{EnumIter, IntoEnumIterator};
+use derive_more::{ Add, Mul, AddAssign, Deref, DerefMut, Sub };
 
 enum Tile {
     Wall,
@@ -11,34 +10,41 @@ enum Tile {
     GhostHouseDoor,
 }
 
-#[derive(Component, Copy, Clone, Debug, PartialEq)]
+#[derive(Component, Copy, Clone, Debug, PartialEq, Add, Deref, Mul, AddAssign, Sub, DerefMut)]
 pub struct Location {
     vec: Vec2,
 }
 
 impl Location {
-    pub fn set(&mut self, vec: Vec2) {
-        const ONE_EIGHTH: f32 = 1.0 / 8.0;
-        assert!(vec.x.fract() % ONE_EIGHTH == 0.0);
-        assert!(vec.y.fract() % ONE_EIGHTH == 0.0);
-        self.vec = vec;
-    }
+    pub const ADVANCEMENT_DELTA: f32 = 1.0 / 8.0;
 
     pub fn new(x: f32, y: f32) -> Self {
-        let mut new = Self { vec: Vec2::default() };
-        new.set(Vec2::new(x, y));
-        return new;
+        Self::from_vec(Vec2::new(x, y))
     }
 
-    pub fn get(&self) -> Vec2 {
-        self.vec
+    pub fn from_vec(vec: Vec2) -> Self {
+        assert!(vec.x.fract() % Self::ADVANCEMENT_DELTA == 0.0);
+        assert!(vec.y.fract() % Self::ADVANCEMENT_DELTA == 0.0);
+        Self { vec }
     }
 
-    pub fn get_tile(&self, direction: Direction) -> Location {
-        let mut new = *self;
-        let new_vec = new.get() + direction.get_vec() * EPSILON;
-        new.set(new_vec.round());
-        new
+    pub fn get_tile(&self, direction: Direction) -> Self {
+        let in_tile_vec = (*self + direction.get_vec() * 0.01).vec;
+        let center_tile_vec = in_tile_vec.round();
+        Self::from_vec(center_tile_vec)
+    }
+
+    pub fn is_on_tile_edge(&self) -> bool {
+        self.x.fract().abs() == 0.5 || self.y.fract().abs() == 0.5
+    }
+
+    pub fn advance(&mut self, direction: Direction) {
+        *self += direction.get_vec() * Self::ADVANCEMENT_DELTA;
+    }
+
+    pub fn next_tile(&self, direction: Direction) -> Self {
+        let current_tile = self.get_tile(direction);
+        current_tile + direction.get_vec()
     }
 }
 
@@ -51,12 +57,23 @@ pub enum Direction {
 }
 
 impl Direction {
-    pub fn get_vec(&self) -> Vec2 {
-        match self {
+    pub fn get_vec(&self) -> Location {
+        let vec = match self {
             Direction::Up => Vec2::new(0.0, 1.0),
-            Direction::Down => Vec2::new(0.0, -1.0),
             Direction::Left => Vec2::new(-1.0, 0.0),
+            Direction::Down => Vec2::new(0.0, -1.0),
             Direction::Right => Vec2::new(1.0, 0.0),
+        };
+
+        Location::from_vec(vec)
+    }
+
+    pub fn opposite(&self) -> Direction {
+        match self {
+            Direction::Up => Direction::Down,
+            Direction::Left => Direction::Right,
+            Direction::Down => Direction::Up,
+            Direction::Right => Direction::Left,
         }
     }
 }
@@ -86,31 +103,29 @@ impl Map {
     }
 
     pub fn possible_directions(&self, location: Location) -> Vec<Direction> {
-        let vec = location.get();
-
-        if vec.x.fract() == 0.5 {
+        if location.x.fract() == 0.5 {
             return vec![Direction::Left, Direction::Right];
-        } else if vec.y.fract() == 0.5 {
+        } else if location.y.fract() == 0.5 {
             return vec![Direction::Up, Direction::Down];
         }
 
         Direction::iter().filter(|direction| {
-            let vec = vec + direction.get_vec();
-            return !self.is_blocked(vec);
+            let tile_to_check = location.next_tile(*direction);
+            return !self.is_blocked(tile_to_check);
         }).collect()
     }
 
-    pub fn is_blocked(&self, vec: Vec2) -> bool {
-        if let Some(Tile::Empty) | None = self.get(vec) {
+    pub fn is_blocked(&self, location: Location) -> bool {
+        if let Some(Tile::Empty) | None = self.get(location) {
             false
         } else {
             true
         }
     }
 
-    fn get(&self, vec: Vec2) -> Option<&Tile> {
-        let x = vec.x.round();
-        let y = vec.y.round();
+    fn get(&self, location: Location) -> Option<&Tile> {
+        let x = location.x.round();
+        let y = location.y.round();
         if x < 0.0 || y < 0.0 {
             None
         } else {
@@ -124,6 +139,47 @@ impl Map {
 
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    pub fn is_in_map(&self, location: Location) -> bool {
+        location.x > 0.0 && 
+            location.x < (self.width - 1) as f32 && 
+            location.y > 0.0 && 
+            location.y < (self.height - 1) as f32
+    }
+
+    // for debugging
+    pub fn print_7x7(&self, current_tile: Location, next_tile: Location ) {
+        let possible_directions = self.possible_directions(next_tile);
+        let possible_locations = possible_directions.iter().map(|direction| {
+            next_tile.next_tile(*direction)
+        }).collect::<Vec<_>>();
+
+        let start_x = current_tile.x as i32 - 3;
+        let start_y = current_tile.y as i32 - 3;
+        let end_x = start_x + 7;
+        let end_y = start_y + 7;
+
+        let mut result = String::new();
+        for y in start_y..end_y {
+            for x in start_x..end_x {
+                let vec = Vec2::new(x as f32, y as f32);
+                if vec == *current_tile {
+                    result.push('C');
+                } else if vec == *next_tile {
+                    result.push('N');
+                } else if possible_locations.contains(&Location::new(x as f32, y as f32)) {
+                    result.push('P');
+                } else if self.is_blocked(Location::from_vec(vec)) {
+                    result.push('W');
+                } else {
+                    result.push(' ');
+                }
+            }
+            result.push('\n');
+        }
+
+        println!("{}", result);
     }
 }
                 

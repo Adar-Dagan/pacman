@@ -54,6 +54,10 @@ fn spawn_pellets(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn remove_pellets(mut commands: Commands, 
                   query: Query<(Entity, &Location), With<PelletType>>, 
                   mut player_at_events: EventReader<PlayerAt>) {
+    if player_at_events.is_empty() {
+        return;
+    }
+
     let player_locations = player_at_events
         .read()
         .map(|event| event.location)
