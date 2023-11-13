@@ -81,22 +81,23 @@ fn move_player(mut query: Query<(&mut Location, &Direction, &mut Player)>,
                mut player_at_events: EventWriter<PlayerAt>) {
     let (mut location, direction, mut player) = query.single_mut();
 
+    player.is_blocked =  *location == location.get_tile(*direction) && 
+        map.is_blocked(location.next_tile(*direction));
+
+    if player.is_blocked {
+        return;
+    }
+
     location.advance(*direction);
 
-    if map.is_blocked(*location + direction.get_vec() * 0.5) {
-        player.is_blocked = true;
-        *location = Location::from_vec(location.round());
-    } else {
-        player.is_blocked = false;
-        match *direction {
-            Direction::Up | Direction::Down => {
-                location.x = bring_towards_center(location.x);
-            },
-            Direction::Left | Direction::Right => {
-                location.y = bring_towards_center(location.y);
-            },
-        };
-    }
+    match *direction {
+        Direction::Up | Direction::Down => {
+            location.x = bring_towards_center(location.x);
+        },
+        Direction::Left | Direction::Right => {
+            location.y = bring_towards_center(location.y);
+        },
+    };
 
     player_at_events.send(PlayerAt { location: location.get_tile(*direction) });
 }
