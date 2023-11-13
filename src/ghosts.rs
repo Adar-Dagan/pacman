@@ -1,16 +1,11 @@
-use std::f32::consts::TAU;
-
 use bevy::prelude::*;
-use strum::{EnumIter, IntoEnumIterator};
 
-use crate::services::{map::{Direction, Map, Location}, events::PlayerAt};
+use crate::common::layers::Layers;
+use crate::common::sets::GameLoop;
+use crate::player::Player;
+use crate::services::map::{Direction, Map, Location};
 
 #[derive(Component)]
-struct Player {
-    pub is_blocked: bool
-}
-
-#[derive(Component, EnumIter)]
 enum Ghost {
     Blinky,
     Pinky,
@@ -23,36 +18,16 @@ struct GhostState {
     pub directions: Vec<Direction>,
 }
 
-#[derive(Component)]
-struct Sprites([Handle<Image>; 3]);
+pub struct GhostPlugin;
 
-pub struct CharacterPlugin;
-
-impl Plugin for CharacterPlugin {
+impl Plugin for GhostPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_characters);
-        app.add_systems(FixedUpdate, (update_ghosts, update_player, map_wrap.after(update_player)));
-        app.add_systems(Update, update_pacman_sprite);
+        app.add_systems(Startup, spawn_ghosts);
+        app.add_systems(FixedUpdate, update_ghosts.in_set(GameLoop::Planning));
     }
 }
 
-fn spawn_characters(mut commands: Commands,
-                    asset_server: Res<AssetServer>) {
-    commands.spawn((
-        Location::new(13.5, 7.0),
-        Player { is_blocked: false },
-        Direction::Right,
-        Sprites([
-            asset_server.load("pacman_closed.png"),
-            asset_server.load("pacman_open_small.png"),
-            asset_server.load("pacman_open_large.png"),
-        ]),
-        SpriteBundle {
-            texture: asset_server.load("pacman_closed.png"),
-            transform: Transform::from_xyz(0.0, 0.0, 20.0),
-            ..default()
-        }));
-
+fn spawn_ghosts(mut commands: Commands) {
     commands.spawn((
             Location::new(13.0, 19.0),
             Ghost::Blinky,
@@ -65,7 +40,7 @@ fn spawn_characters(mut commands: Commands,
                     custom_size: Some(Vec2::new(4.0, 4.0)),
                     ..default()
                 },
-                transform: Transform::from_xyz(0.0, 0.0, 990.0),
+                transform: Transform::from_xyz(0.0, 0.0, Layers::Ghosts.as_f32()),
                 ..default()
             }));
 
@@ -81,7 +56,7 @@ fn spawn_characters(mut commands: Commands,
                     custom_size: Some(Vec2::new(4.0, 4.0)),
                     ..default()
                 },
-                transform: Transform::from_xyz(0.0, 0.0, 990.0),
+                transform: Transform::from_xyz(0.0, 0.0, Layers::Ghosts.as_f32()),
                 ..default()
             }));
 
@@ -97,7 +72,7 @@ fn spawn_characters(mut commands: Commands,
                     custom_size: Some(Vec2::new(4.0, 4.0)),
                     ..default()
                 },
-                transform: Transform::from_xyz(0.0, 0.0, 990.0),
+                transform: Transform::from_xyz(0.0, 0.0, Layers::Ghosts.as_f32()),
                 ..default()
             }));
 
@@ -113,117 +88,9 @@ fn spawn_characters(mut commands: Commands,
                     custom_size: Some(Vec2::new(4.0, 4.0)),
                     ..default()
                 },
-                transform: Transform::from_xyz(0.0, 0.0, 990.0),
+                transform: Transform::from_xyz(0.0, 0.0, Layers::Ghosts.as_f32()),
                 ..default()
             }));
-}
-
-fn update_player(mut query: Query<(&mut Location, 
-                                   &mut Direction, 
-                                   &mut Player)>,
-                 map: Res<Map>,
-                 key: Res<Input<KeyCode>>,
-                 mut player_at_events: EventWriter<PlayerAt>) {
-    let (mut location, mut direction, mut player) = query.single_mut();
-
-    let possible_directions = map.possible_directions(*location);
-
-    let new_direction = possible_directions.iter().filter(|direction| {
-        match **direction {
-            Direction::Up => key.pressed(KeyCode::Up),
-            Direction::Down => key.pressed(KeyCode::Down),
-            Direction::Left => key.pressed(KeyCode::Left),
-            Direction::Right => key.pressed(KeyCode::Right),
-        }
-    }).next();
-
-    if let Some(d) = new_direction {
-        if *d != *direction {
-            *direction = *d;
-        }
-    }
-
-    let mut new_location = location.clone();
-    new_location.advance(*direction);
-
-    if map.is_blocked(new_location + direction.get_vec() * 0.5) {
-        player.is_blocked = true;
-        new_location = Location::from_vec(new_location.round());
-    } else {
-        player.is_blocked = false;
-        match *direction {
-            Direction::Up | Direction::Down => {
-                new_location.x = bring_to_center(new_location.x);
-            },
-            Direction::Left | Direction::Right => {
-                new_location.y = bring_to_center(new_location.y);
-            },
-        };
-    }
-    *location = new_location;
-
-    player_at_events.send(PlayerAt { location: location.get_tile(*direction) });
-}
-
-fn bring_to_center(location: f32) -> f32 {
-    if location.fract() == 0.0 {
-        return location;
-    }
-
-    let dif_from_center = location.round() - location; 
-    let dif_sign = dif_from_center.signum();
-    let location = location + dif_sign * Location::ADVANCEMENT_DELTA;
-    
-    location
-}
-
-fn map_wrap(mut query: Query<&mut Location>, map: Res<Map>) {
-    query.par_iter_mut().for_each(|mut location| {
-        if location.x == -2.0 {
-            location.x = map.width() as f32 + 1.0;
-        } else if location.x == (map.width() as f32 + 1.0) {
-            location.x = -2.0;
-        }
-
-        if location.y == -2.0 {
-            location.y = map.height() as f32 + 1.0;
-        } else if location.y == (map.height() as f32 + 1.0) {
-            location.y = -2.0;
-        }
-    });
-}
-
-fn update_pacman_sprite(mut query: Query<(&Location, &mut Handle<Image>, &mut Transform, &Direction, &Sprites, &Player)>) {
-    let (location, mut sprite, mut transform, direction, sprites, player) = 
-        query.single_mut();
-
-    let sprite_index = if player.is_blocked {
-        1
-    } else {
-        let masked_location = *location * *direction.get_vec();
-        let value_in_direction = if masked_location.x.fract() == 0.0 {
-            location.y
-        } else {
-            location.x
-        };
-
-        let quarter = ((value_in_direction * 4.0).floor() as usize + 1) % 4;
-        if quarter == 3 { 1 } else { quarter }
-    };
-
-    *sprite = sprites.0[sprite_index].clone();
-
-    let rotation_multiplier = match *direction {
-        Direction::Left => 0.0,
-        Direction::Down => 1.0,
-        Direction::Right => 2.0,
-        Direction::Up => 3.0,
-    };
-
-    let rotation = Quat::from_rotation_z(rotation_multiplier * TAU / 4.0);
-    if transform.rotation != rotation {
-        transform.rotation = rotation;
-    }
 }
 
 fn update_ghosts(mut query: Query<(&mut Location, &mut GhostState, &Ghost), Without<Player>>,

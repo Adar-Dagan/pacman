@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::map::Location;
+use crate::services::map::Location;
 
 #[derive(Event)]
 pub struct PlayerAt {

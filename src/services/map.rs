@@ -10,7 +10,9 @@ enum Tile {
     GhostHouseDoor,
 }
 
-#[derive(Component, Copy, Clone, Debug, PartialEq, Add, Deref, Mul, AddAssign, Sub, DerefMut)]
+#[derive(Component)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Add, AddAssign, Sub, Mul, Deref, DerefMut)]
 pub struct Location {
     vec: Vec2,
 }
@@ -48,7 +50,8 @@ impl Location {
     }
 }
 
-#[derive(Component, EnumIter, Copy, Clone, PartialEq, Debug)]
+#[derive(Component, EnumIter)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Direction {
     Left,
     Up,

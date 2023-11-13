@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 
-use crate::services::{map::Location, events::PlayerAt};
+use crate::common::layers::Layers;
+use crate::services::map::Location;
+use crate::common::events::PlayerAt;
+use crate::common::sets::GameLoop::Collisions;
 
 #[derive(Component, Copy, Clone)]
 enum PelletType {
@@ -13,7 +16,8 @@ pub struct PelletsPlugin;
 impl Plugin for PelletsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_pellets);
-        app.add_systems(FixedUpdate, remove_pellets);
+        app.add_systems(FixedUpdate, remove_pellets
+                        .in_set(Collisions));
     }
 }
 
@@ -45,7 +49,7 @@ fn spawn_pellets(mut commands: Commands, asset_server: Res<AssetServer>) {
                      PelletType::Regular => "pellet.png",
                      PelletType::Power => "power_pellet.png",
                  }),
-                 transform: Transform::from_xyz(0.0, 0.0, 10.0),
+                 transform: Transform::from_xyz(0.0, 0.0, Layers::Pellets.as_f32()),
                  ..default()
              }));
     }
@@ -54,10 +58,6 @@ fn spawn_pellets(mut commands: Commands, asset_server: Res<AssetServer>) {
 fn remove_pellets(mut commands: Commands, 
                   query: Query<(Entity, &Location), With<PelletType>>, 
                   mut player_at_events: EventReader<PlayerAt>) {
-    if player_at_events.is_empty() {
-        return;
-    }
-
     let player_locations = player_at_events
         .read()
         .map(|event| event.location)
