@@ -39,7 +39,7 @@ fn spawn_characters(mut commands: Commands,
             PlayerBundle {
                 location: Location::new(13.5, 7.0),
                 player: Player { is_blocked: false },
-                direction: Direction::Right
+                direction: Direction::Left,
             },
             Sprites([
                     asset_server.load("pacman_closed.png"),
