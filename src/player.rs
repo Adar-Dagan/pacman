@@ -1,11 +1,12 @@
 use std::f32::consts::TAU;
+use std::time::Duration;
 
 use bevy::prelude::*;
 
 use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::services::map::{Direction, Map, Location};
-use crate::common::events::PlayerAt;
+use crate::common::events::{PlayerAt, PelletEaten};
 
 #[derive(Component)]
 pub struct Player {
@@ -19,10 +20,14 @@ struct PlayerBundle {
     player: Player,
 }
 
+#[derive(Resource)]
+struct PelletEatenTimer(Timer);
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(PelletEatenTimer(Timer::from_seconds(0.0, TimerMode::Once)));
         app.add_systems(Startup, spawn_characters);
         app.add_systems(FixedUpdate, (update_player.in_set(GameLoop::Planning),
                                       move_player.in_set(GameLoop::Movement)));
@@ -77,7 +82,20 @@ fn update_player(mut query: Query<(&Location,
 
 fn move_player(mut query: Query<(&mut Location, &Direction, &mut Player)>,
                map: Res<Map>,
-               mut player_at_events: EventWriter<PlayerAt>) {
+               mut player_at_events: EventWriter<PlayerAt>,
+               mut timer: ResMut<PelletEatenTimer>,
+               time: Res<Time>,
+               mut pellets_eaten_events: EventReader<PelletEaten>) {
+    const PELLET_STOP_TIME: f32 = 1.0 / 60.0;
+    for event in pellets_eaten_events.read() {
+        timer.0.set_duration(Duration::from_secs_f32(PELLET_STOP_TIME * if event.power { 3.0 } else { 1.0 }));
+        timer.0.reset();
+    }
+
+    if !timer.0.tick(time.delta()).finished() {
+        return;
+    }
+
     let (mut location, direction, mut player) = query.single_mut();
 
     player.is_blocked =  *location == location.get_tile(*direction) && 

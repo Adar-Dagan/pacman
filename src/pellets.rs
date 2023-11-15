@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::common::layers::Layers;
 use crate::services::map::Location;
-use crate::common::events::PlayerAt;
+use crate::common::events::{PlayerAt, PelletEaten};
 use crate::common::sets::GameLoop::Collisions;
 
 #[derive(Component, Copy, Clone)]
@@ -56,15 +56,19 @@ fn spawn_pellets(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn remove_pellets(mut commands: Commands, 
-                  query: Query<(Entity, &Location), With<PelletType>>, 
-                  mut player_at_events: EventReader<PlayerAt>) {
+                  query: Query<(Entity, &Location, &PelletType)>, 
+                  mut player_at_events: EventReader<PlayerAt>,
+                  mut pellets_eaten_events: EventWriter<PelletEaten>) {
     let player_locations = player_at_events
         .read()
         .map(|event| event.location)
         .collect::<Vec<_>>();
 
-    for (entity, location) in query.iter() {
+    for (entity, location, pellet_type) in query.iter() {
         if player_locations.contains(location) {
+            pellets_eaten_events.send(PelletEaten {
+                power: matches!(pellet_type, PelletType::Power),
+            });
             commands.entity(entity).despawn();
         }
     }

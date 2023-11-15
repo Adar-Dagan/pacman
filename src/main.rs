@@ -15,6 +15,7 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .insert_resource(Time::<Fixed>::from_hz(MAX_MOVE_SPEED))
         .add_event::<common::events::PlayerAt>()
+        .add_event::<common::events::PelletEaten>()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(bevy_framepace::FramepacePlugin)
         .add_plugins((map_render::MapRenderPlugin, 
@@ -37,5 +38,5 @@ fn camera_setup(mut commands: Commands) {
 }
 
 fn frame_rate_limiter(mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
-    settings.limiter = bevy_framepace::Limiter::from_framerate(MAX_MOVE_SPEED);
+    settings.limiter = bevy_framepace::Limiter::from_framerate(60.0);
 }

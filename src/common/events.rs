@@ -6,3 +6,8 @@ use crate::services::map::Location;
 pub struct PlayerAt {
     pub location: Location
 }
+
+#[derive(Event)]
+pub struct PelletEaten {
+    pub power: bool
+}
