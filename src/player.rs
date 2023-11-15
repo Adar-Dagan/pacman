@@ -19,9 +19,6 @@ struct PlayerBundle {
     player: Player,
 }
 
-#[derive(Component)]
-struct Sprites([Handle<Image>; 3]);
-
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -34,20 +31,22 @@ impl Plugin for PlayerPlugin {
 }
 
 fn spawn_characters(mut commands: Commands,
-                    asset_server: Res<AssetServer>) {
+                    asset_server: Res<AssetServer>,
+                    mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
+    let texture_handle = asset_server.load("pacman.png");
+    let texture_atlas =
+        TextureAtlas::from_grid(texture_handle, Vec2::new(15.0, 15.0), 3, 1, None, None);
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+
     commands.spawn((
             PlayerBundle {
                 location: Location::new(13.5, 7.0),
                 player: Player { is_blocked: false },
                 direction: Direction::Left,
             },
-            Sprites([
-                    asset_server.load("pacman_closed.png"),
-                    asset_server.load("pacman_open_small.png"),
-                    asset_server.load("pacman_open_large.png"),
-            ]),
-            SpriteBundle {
-                texture: asset_server.load("pacman_closed.png"),
+            SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle,
+                sprite: TextureAtlasSprite::new(0), 
                 transform: Transform::from_xyz(0.0, 0.0, Layers::Player.as_f32()),
                 ..default()
             }));
@@ -116,15 +115,14 @@ fn bring_towards_center(location: f32) -> f32 {
 
 
 fn update_pacman_sprite(mut query: Query<(&Location,
-                                          &mut Handle<Image>,
                                           &mut Transform,
                                           &Direction,
-                                          &Sprites,
+                                          &mut TextureAtlasSprite,
                                           &Player)>) {
-    let (location, mut sprite, mut transform, direction, sprites, player) = 
+    let (location, mut transform, direction, mut sprite, player) = 
         query.single_mut();
 
-    let sprite_index = if player.is_blocked {
+    let index = if player.is_blocked {
         1
     } else {
         let masked_location = *location * *direction.get_vec();
@@ -139,16 +137,11 @@ fn update_pacman_sprite(mut query: Query<(&Location,
         if quarter == 3 { 1 } else { quarter }
     };
 
-    *sprite = sprites.0[sprite_index].clone();
+    if sprite.index != index {
+        sprite.index = index;
+    }
 
-    let rotation_multiplier = match *direction {
-        Direction::Left => 0.0,
-        Direction::Down => 1.0,
-        Direction::Right => 2.0,
-        Direction::Up => 3.0,
-    };
-
-    let rotation = Quat::from_rotation_z(rotation_multiplier * TAU / 4.0);
+    let rotation = Quat::from_rotation_z(TAU * direction.rotation());
     if transform.rotation != rotation {
         transform.rotation = rotation;
     }

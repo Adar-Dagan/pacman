@@ -48,6 +48,10 @@ impl Location {
         let current_tile = self.get_tile(direction);
         current_tile + direction.get_vec()
     }
+
+    pub fn is_tile_center(&self) -> bool {
+        self.x.fract() == 0.0 && self.y.fract() == 0.0
+    }
 }
 
 #[derive(Component, EnumIter)]
@@ -79,6 +83,15 @@ impl Direction {
             Direction::Right => Direction::Left,
         }
     }
+
+    pub fn rotation(&self) -> f32 {
+        match self {
+            Direction::Left => 0.0,
+            Direction::Down => 0.25,
+            Direction::Right => 0.5,
+            Direction::Up => 0.75,
+        }
+    }
 }
 
 #[derive(Resource)]
@@ -106,9 +119,9 @@ impl Map {
     }
 
     pub fn possible_directions(&self, location: Location) -> Vec<Direction> {
-        if location.x.fract() == 0.5 {
+        if location.x.fract() == 0.5 || !self.x_is_in_map(location.x) {
             return vec![Direction::Left, Direction::Right];
-        } else if location.y.fract() == 0.5 {
+        } else if location.y.fract() == 0.5 || !self.y_is_in_map(location.y) {
             return vec![Direction::Up, Direction::Down];
         }
 
@@ -145,10 +158,15 @@ impl Map {
     }
 
     pub fn is_in_map(&self, location: Location) -> bool {
-        location.x > 0.0 && 
-            location.x < (self.width - 1) as f32 && 
-            location.y > 0.0 && 
-            location.y < (self.height - 1) as f32
+        self.x_is_in_map(location.x) && self.y_is_in_map(location.y)
+    }
+
+    fn y_is_in_map(&self, y: f32) -> bool {
+        y > 0.0 && y < (self.height - 1) as f32
+    }
+
+    fn x_is_in_map(&self, x: f32) -> bool {
+        x > 0.0 && x < (self.width - 1) as f32
     }
 
     // for debugging

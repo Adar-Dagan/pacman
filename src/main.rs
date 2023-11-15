@@ -8,7 +8,7 @@ mod player;
 mod ghosts;
 
 const SCALE: f32 = 2.0;
-const MAX_MOVE_SPEED: f64 = 40.0; // In pixel per second
+const MAX_MOVE_SPEED: f64 = 70.0; // In pixel per second
 
 fn main() {
     App::new()
@@ -21,7 +21,7 @@ fn main() {
                       pellets::PelletsPlugin,
                       player::PlayerPlugin,
                       ghosts::GhostPlugin))
-        .add_systems(Startup, camera_setup)
+        .add_systems(Startup, (camera_setup, frame_rate_limiter))
         .configure_sets(FixedUpdate, (
             common::sets::GameLoop::Planning,
             common::sets::GameLoop::Movement,
@@ -34,4 +34,8 @@ fn camera_setup(mut commands: Commands) {
     let mut camera = Camera2dBundle::default();
     camera.projection.scale  = 1.0 / SCALE;
     commands.spawn(camera);
+}
+
+fn frame_rate_limiter(mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
+    settings.limiter = bevy_framepace::Limiter::from_framerate(MAX_MOVE_SPEED);
 }
