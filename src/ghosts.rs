@@ -261,13 +261,20 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
     });
 }
 
-fn update_ghost_speed(mut query: Query<(&mut CharacterSpeed, &GhostMode)>) {
-    query.par_iter_mut().for_each(|(mut speed, mode)| {
-        match *mode {
-            GhostMode::Frightened => speed.set_speed(0.5),
-            GhostMode::Home(_) | GhostMode::HomeExit(_) => speed.set_speed(0.5),
-            GhostMode::Dead(_) => speed.set_speed(1.05),
-            _ => speed.set_speed(0.75),
+fn update_ghost_speed(mut query: Query<(&mut CharacterSpeed, &GhostMode, &Location), With<Ghost>>) {
+    query.par_iter_mut().for_each(|(mut speed, mode, location)| {
+        let in_tunnel = location.y == 16.0 && (location.x <= 5.0 || location.x >= 22.0);
+
+        if let GhostMode::Dead(_) = *mode {
+            speed.set_speed(1.05);
+        } else if in_tunnel {
+            speed.set_speed(0.4);
+        } else {
+            match *mode {
+                GhostMode::Frightened => speed.set_speed(0.5),
+                GhostMode::Home(_) | GhostMode::HomeExit(_) => speed.set_speed(0.5),
+                _ => speed.set_speed(0.75),
+            }
         }
 
         speed.tick();
@@ -328,10 +335,12 @@ fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &Ghost
         };
 
         let next_tile = location.next_tile(directions.current);
+        let in_special_zone = 10.0 <= location.x && location.x <= 17.0 && (location.y == 7.0 || location.y == 19.0);
         let planned_direction = ghost_path_finder(next_tile,
                                                   target_tile,
                                                   map,
-                                                  directions.current);
+                                                  directions.current,
+                                                  in_special_zone);
 
         directions.set_plan(planned_direction);
     });
@@ -339,9 +348,9 @@ fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &Ghost
 
 fn scatter(ghost: Ghost) -> Location {
     match ghost {
-        Ghost::Blinky => Location::new(28.0, 30.0),
-        Ghost::Pinky => Location::new(2.0, 30.0),
-        Ghost::Inky => Location::new(30.0, -1.0),
+        Ghost::Blinky => Location::new(25.0, 33.0),
+        Ghost::Pinky => Location::new(2.0, 33.0),
+        Ghost::Inky => Location::new(27.0, -1.0),
         Ghost::Clyde => Location::new(0.0, -1.0),
     }
 }
@@ -373,10 +382,15 @@ fn chase_target(ghost: Ghost,
 fn ghost_path_finder(next_tile: Location,
                      target_tile: Option<Location>,
                      map: &Map,
-                     current_direction: Direction) -> Direction {
+                     current_direction: Direction,
+                     is_in_special_zone: bool) -> Direction {
     let mut possible_directions = map.possible_directions(next_tile);
 
     possible_directions.retain(|direction| {
+        if is_in_special_zone && *direction == Direction::Up {
+            return false;
+        }
+
         *direction != current_direction.opposite()
     });
 
