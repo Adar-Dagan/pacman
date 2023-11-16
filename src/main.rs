@@ -8,7 +8,7 @@ mod player;
 mod ghosts;
 
 const SCALE: f32 = 2.0;
-const MAX_MOVE_SPEED: f64 = 70.0; // In pixel per second
+const MAX_MOVE_SPEED: f64 = 78.0; // In pixel per second
 
 fn main() {
     App::new()
@@ -38,5 +38,5 @@ fn camera_setup(mut commands: Commands) {
 }
 
 fn frame_rate_limiter(mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
-    settings.limiter = bevy_framepace::Limiter::from_framerate(60.0);
+    settings.limiter = bevy_framepace::Limiter::from_framerate(MAX_MOVE_SPEED);
 }

@@ -7,6 +7,7 @@ use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::services::map::{Direction, Map, Location};
 use crate::common::events::{PlayerAt, PelletEaten};
+use crate::services::speed::CharacterSpeed;
 
 #[derive(Component)]
 pub struct Player {
@@ -18,6 +19,7 @@ struct PlayerBundle {
     location: Location,
     direction: Direction,
     player: Player,
+    speed: CharacterSpeed,
 }
 
 #[derive(Resource)]
@@ -48,6 +50,7 @@ fn spawn_characters(mut commands: Commands,
                 location: Location::new(13.5, 7.0),
                 player: Player { is_blocked: false },
                 direction: Direction::Left,
+                speed: CharacterSpeed::new(0.8),
             },
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
@@ -80,7 +83,7 @@ fn update_player(mut query: Query<(&Location,
     }
 }
 
-fn move_player(mut query: Query<(&mut Location, &Direction, &mut Player)>,
+fn move_player(mut query: Query<(&mut Location, &Direction, &mut CharacterSpeed, &mut Player)>,
                map: Res<Map>,
                mut player_at_events: EventWriter<PlayerAt>,
                mut timer: ResMut<PelletEatenTimer>,
@@ -96,7 +99,12 @@ fn move_player(mut query: Query<(&mut Location, &Direction, &mut Player)>,
         return;
     }
 
-    let (mut location, direction, mut player) = query.single_mut();
+    let (mut location, direction, mut speed, mut player) = query.single_mut();
+
+    speed.tick();
+    if speed.should_miss {
+        return;
+    }
 
     player.is_blocked =  *location == location.get_tile(*direction) && 
         map.is_blocked(location.next_tile(*direction));

@@ -8,6 +8,7 @@ use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::player::Player;
 use crate::services::map::{Direction, Map, Location};
+use crate::services::speed::CharacterSpeed;
 
 #[derive(Component, EnumIter, Clone, Copy, PartialEq)]
 enum Ghost {
@@ -24,11 +25,10 @@ struct GhostDirections {
 }
 
 impl GhostDirections {
-    //TODO: Temporary initialization to be removed when ghost initial state is implemented
-    fn new() -> Self {
+    fn new(direction: Direction) -> Self {
         Self {
-            current: Direction::Left,
-            planned: Some(Direction::Left),
+            current: direction,
+            planned: Some(direction),
         }
     }
 
@@ -52,10 +52,12 @@ impl GhostDirections {
 
 #[derive(Resource, Component, Debug, Clone, Copy, PartialEq)]
 enum GhostMode {
+    Home(bool),
+    HomeExit(bool),
     Chase,
     Scatter,
     Frightened,
-    Dead,
+    Dead(bool),
 }
 
 #[derive(Resource)]
@@ -79,6 +81,12 @@ struct Collision {
     ghost: Ghost,
 }
 
+#[derive(Resource)]
+struct GhostPelletEatenCounter {
+    counter: usize,
+    life_lost: bool
+}
+
 const CHANGE_DURATIONS: [u64; 7] = [7, 20, 7, 20, 5, 20, 5];
 
 pub struct GhostPlugin;
@@ -91,10 +99,11 @@ impl Plugin for GhostPlugin {
             duration_index: 0,
         });
         app.insert_resource(FriteTimer(Timer::from_seconds(0.0, TimerMode::Once)));
+        app.insert_resource(GhostPelletEatenCounter { counter: 0, life_lost: false });
         app.add_event::<Collision>();
         app.add_systems(Startup, spawn_ghosts);
         app.add_systems(FixedUpdate, (update_global_ghost_mode.before(GameLoop::Planning),
-                                      (update_ghost_mode, ghost_tile_change_detection, plan_ghosts)
+                                      (update_ghost_mode, update_ghost_speed, ghost_tile_change_detection, plan_ghosts)
                                                  .chain()
                                                  .in_set(GameLoop::Planning),
                                       move_ghosts.in_set(GameLoop::Movement), 
@@ -115,18 +124,27 @@ fn spawn_ghost(ghost: Ghost,
                commands: &mut Commands,
                asset_server: &Res<AssetServer>,
                texture_atlases: &mut ResMut<Assets<TextureAtlas>>) {
-    let texture_path = match ghost {
-        Ghost::Blinky => "blinky_body.png",
-        Ghost::Pinky => "pinky_body.png",
-        Ghost::Inky => "inky_body.png",
-        Ghost::Clyde => "clyde_body.png",
+    let (texture_path, location, directions) = match ghost {
+        Ghost::Blinky => ("blinky_body.png",
+                          Location::new(13.5, 19.0),
+                          GhostDirections::new(Direction::Left)),
+        Ghost::Pinky => ("pinky_body.png",
+                         Location::new(13.5, 16.0),
+                         GhostDirections::new(Direction::Down)),
+        Ghost::Inky => ("inky_body.png",
+                        Location::new(11.5, 16.0),
+                        GhostDirections::new(Direction::Up)),
+        Ghost::Clyde => ("clyde_body.png",
+                         Location::new(15.5, 16.0),
+                         GhostDirections::new(Direction::Up)),
     };
 
     commands.spawn((
-            Location::new(13.0, 19.0),
+            location,
             ghost,
-            GhostDirections::new(),
-            GhostMode::Scatter,
+            directions,
+            CharacterSpeed::new(0.75),
+            if let Ghost::Blinky | Ghost::Pinky = ghost { GhostMode::HomeExit(false) } else { GhostMode::Home(false) },
             SpatialBundle::default()))
     .with_children(|parent| {
         for ghost_sprite in GhostSprite::iter() {
@@ -155,37 +173,83 @@ fn spawn_ghost(ghost: Ghost,
 fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Location, &Ghost)>,
                      global_ghost_mode: Res<GhostMode>,
                      mut pellet_eaten_events: EventReader<PelletEaten>,
+                     mut ghost_pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
                      mut collision_events: EventReader<Collision>,
                      mut frite_timer: ResMut<FriteTimer>,
                      time: Res<Time>) {
+    ghost_pellet_eaten_counter.counter += pellet_eaten_events.len();
     let power_pellet_eaten = pellet_eaten_events.read().find(|event| event.power).is_some();
+
     let frite_timer_finished = frite_timer.0.tick(time.delta()).just_finished();
     if power_pellet_eaten {
         frite_timer.0.reset();
-        frite_timer.0.set_duration(Duration::from_secs(7));
+        frite_timer.0.set_duration(Duration::from_secs(6));
     }
     let collided_ghosts = collision_events.read().map(|event| event.ghost).collect::<Vec<_>>();
     query.par_iter_mut().for_each(|(mut mode, mut directions, location, ghost)| {
         if power_pellet_eaten {
-            if !matches!(*mode, GhostMode::Frightened) {
+            let prev_mode = *mode;
+            *mode = match *mode {
+                GhostMode::Home(_) => GhostMode::Home(true),
+                GhostMode::HomeExit(_) => GhostMode::HomeExit(true),
+                GhostMode::Dead(enter_home) => GhostMode::Dead(enter_home),
+                _ => GhostMode::Frightened,
+            };
+
+            if prev_mode != *mode {
                 directions.reverse();
             }
-            *mode = GhostMode::Frightened;
-
             return;
         }
 
         match *mode {
             GhostMode::Frightened => {
                 if collided_ghosts.contains(ghost) {
-                    *mode = GhostMode::Dead;
+                    *mode = GhostMode::Dead(false);
                 } else if frite_timer_finished {
                     *mode = *global_ghost_mode;
                 }
             },
-            GhostMode::Dead => {
-                if *location == Location::new(13.0, 19.0) {
-                    *mode = *global_ghost_mode;
+            GhostMode::Dead(false) => {
+                if *location == Location::new(13.5, 19.0) {
+                    *mode = GhostMode::Dead(true);
+                }
+            }
+            GhostMode::Dead(true) => {
+                if *location == Location::new(13.5, 16.0) {
+                    *mode = GhostMode::HomeExit(false);
+                }
+            },
+            GhostMode::Home(mut frightened) => {
+                if frite_timer_finished {
+                    *mode = GhostMode::Home(false);
+                    frightened = false;
+                }
+
+                match *ghost {
+                    Ghost::Inky if ghost_pellet_eaten_counter.counter >= 30 => {
+                        *mode = GhostMode::HomeExit(frightened);
+                    },
+                    Ghost::Clyde if ghost_pellet_eaten_counter.counter >= 90 => {
+                        *mode = GhostMode::HomeExit(frightened);
+                    },
+                    _ => (),
+                }
+            },
+            GhostMode::HomeExit(mut frightened) => {
+                if frite_timer_finished {
+                    frightened = false;
+                    *mode = GhostMode::HomeExit(false);
+                }
+                if location.y == 19.0 {
+                    directions.current = Direction::Left;
+                    directions.planned = Some(Direction::Left);
+
+                    *mode = if frightened {
+                        GhostMode::Frightened
+                    } else {
+                        *global_ghost_mode
+                    };
                 }
             },
             _ if *mode != *global_ghost_mode => {
@@ -197,8 +261,24 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
     });
 }
 
-fn ghost_tile_change_detection(mut query: Query<(&Location, &mut GhostDirections), With<Ghost>>) {
-    query.par_iter_mut().for_each(|(location, mut directions)| {
+fn update_ghost_speed(mut query: Query<(&mut CharacterSpeed, &GhostMode)>) {
+    query.par_iter_mut().for_each(|(mut speed, mode)| {
+        match *mode {
+            GhostMode::Frightened => speed.set_speed(0.5),
+            GhostMode::Home(_) | GhostMode::HomeExit(_) => speed.set_speed(0.5),
+            GhostMode::Dead(_) => speed.set_speed(1.05),
+            _ => speed.set_speed(0.75),
+        }
+
+        speed.tick();
+    });
+}
+
+fn ghost_tile_change_detection(mut query: Query<(&Location, &mut GhostDirections, &CharacterSpeed), With<Ghost>>) {
+    query.par_iter_mut().for_each(|(location, mut directions, speed)| {
+        if speed.should_miss {
+            return;
+        }
         if location.is_tile_center() {
             directions.advance();
         }
@@ -221,6 +301,10 @@ fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &Ghost
     }
 
     query.par_iter_mut().for_each(|(location, mut directions, ghost, mode)| {
+        if let GhostMode::Home(_) | GhostMode::HomeExit(_) | GhostMode::Dead(true) = *mode {
+            return;
+        }
+
         if !directions.plan_needed() {
             return;
         }
@@ -239,7 +323,8 @@ fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &Ghost
                                              player_tile,
                                              *player_direction)),
             GhostMode::Frightened => None,
-            GhostMode::Dead => Some(Location::new(13.0, 19.0)),
+            GhostMode::Dead(false) => Some(Location::new(13.5, 19.0)),
+            GhostMode::Home(_) | GhostMode::HomeExit(_) | GhostMode::Dead(true) => unreachable!(),
         };
 
         let next_tile = location.next_tile(directions.current);
@@ -313,8 +398,65 @@ fn ghost_path_finder(next_tile: Location,
     }
 }
 
-fn move_ghosts(mut query: Query<(&mut Location, &GhostDirections), With<Ghost>>) {
-    query.par_iter_mut().for_each(|(mut location, directions)| {
+fn move_ghosts(mut query: Query<(&mut Location, &mut GhostDirections, &GhostMode, &Ghost, &CharacterSpeed)>) {
+    query.par_iter_mut().for_each(|(mut location, mut directions, mode, ghost, speed)| {
+        if speed.should_miss {
+            return;
+        }
+
+        match *mode {
+            GhostMode::Home(_) => {
+                match ghost {
+                    Ghost::Pinky => location.x = 13.5,
+                    Ghost::Inky => location.x = 11.5,
+                    Ghost::Clyde => location.x = 15.5,
+                    Ghost::Blinky => unreachable!()
+                }
+
+                if location.y >= 16.5 {
+                    directions.current = Direction::Down;
+                } else if location.y <= 15.5 {
+                    directions.current = Direction::Up;
+                }
+            },
+            GhostMode::HomeExit(_) => {
+                match *ghost {
+                    Ghost::Blinky => {
+                        debug_assert!(location.x == 13.5);
+                        debug_assert!(location.y >= 15.5 && location.y <= 19.0);
+
+                        directions.current = Direction::Up;
+                    }
+                    Ghost::Pinky => {
+                        debug_assert!(location.x == 13.5);
+                        debug_assert!(location.y >= 15.5 && location.y <= 19.0);
+
+                        directions.current = Direction::Up;
+                    }
+                    Ghost::Inky => {
+                        debug_assert!(location.y >= 15.5 && location.y <= 19.0);
+
+                        if location.x != 13.5 {
+                            directions.current = Direction::Right;
+                        } else {
+                            directions.current = Direction::Up;
+                        }
+                    },
+                    Ghost::Clyde => {
+                        debug_assert!(location.y >= 15.5 && location.y <= 19.0);
+
+                        if location.x != 13.5 {
+                            directions.current = Direction::Left;
+                        } else {
+                            directions.current = Direction::Up;
+                        }
+                    },
+                }
+            },
+            GhostMode::Dead(true) => directions.current = Direction::Down,
+            _ => (),
+        }
+
         location.advance(directions.current);
     });
 }
@@ -332,12 +474,13 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
     for (directions, location, mode, children) in query.iter_mut() {
         for child in children.iter() {
             let (mut sprite, mut visibility, sprite_type) = eyes_query.get_mut(*child).expect("Ghost without sprite");
+            let is_frightened = matches!(*mode, GhostMode::Frightened | GhostMode::Home(true) | GhostMode::HomeExit(true));
             match sprite_type {
                 GhostSprite::Body => {
-                    if let GhostMode::Chase | GhostMode::Scatter = *mode {
-                        *visibility = Visibility::Inherited;
-                    } else {
+                    if is_frightened || matches!(*mode, GhostMode::Dead(_)) {
                         *visibility = Visibility::Hidden;
+                    } else {
+                        *visibility = Visibility::Inherited;
                     }
 
                     if location.is_tile_center() {
@@ -345,19 +488,17 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
                     }
                 },
                 GhostSprite::Eyes => {
-                    if let GhostMode::Frightened = *mode {
+                    if is_frightened {
                         *visibility = Visibility::Hidden;
                     } else {
                         *visibility = Visibility::Inherited;
                     }
 
-                    if location.is_tile_center() {
-                        let rotation = (directions.current.rotation() * 4.0) as usize;
-                        sprite.index = rotation;
-                    }
+                    let rotation = (directions.current.rotation() * 4.0) as usize;
+                    sprite.index = rotation;
                 },
                 GhostSprite::Frightened => {
-                    if let GhostMode::Frightened = *mode {
+                    if is_frightened {
                         *visibility = Visibility::Inherited;
                     } else {
                         *visibility = Visibility::Hidden;
