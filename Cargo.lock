@@ -2549,6 +2549,7 @@ dependencies = [
  "bevy",
  "bevy_framepace",
  "derive_more",
+ "fastrand 2.0.1",
  "strum",
 ]
 

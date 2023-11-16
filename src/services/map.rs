@@ -36,10 +36,6 @@ impl Location {
         Self::from_vec(center_tile_vec)
     }
 
-    pub fn is_on_tile_edge(&self) -> bool {
-        self.x.fract().abs() == 0.5 || self.y.fract().abs() == 0.5
-    }
-
     pub fn advance(&mut self, direction: Direction) {
         *self += direction.get_vec() * Self::ADVANCEMENT_DELTA;
     }

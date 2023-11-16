@@ -3,14 +3,13 @@ use std::time::Duration;
 use bevy::prelude::*;
 use strum::{ EnumIter, IntoEnumIterator };
 
+use crate::common::events::PelletEaten;
 use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::player::Player;
 use crate::services::map::{Direction, Map, Location};
 
-const DIRECTIONS_CAPACITY: usize = 3;
-
-#[derive(Component, EnumIter, Clone, Copy)]
+#[derive(Component, EnumIter, Clone, Copy, PartialEq)]
 enum Ghost {
     Blinky,
     Pinky,
@@ -20,97 +19,87 @@ enum Ghost {
 
 #[derive(Component, Debug, Clone, Copy)]
 struct GhostDirections {
-    directions: [Option<Direction>; DIRECTIONS_CAPACITY],
-    current: usize,
-    size: usize,
+    current: Direction,
+    planned: Option<Direction>,
 }
 
 impl GhostDirections {
+    //TODO: Temporary initialization to be removed when ghost initial state is implemented
     fn new() -> Self {
         Self {
-            directions: [None; DIRECTIONS_CAPACITY],
-            current: 0,
-            size: 0,
+            current: Direction::Left,
+            planned: Some(Direction::Left),
         }
     }
 
-    fn current(&self) -> Direction {
-        self.directions[self.current].expect("No current direction")
+    fn advance(&mut self) {
+        self.current = self.planned.expect("Advanced with no planned direction");
+        self.planned = None;
     }
 
-    fn remove_first(&mut self) {
-        self.directions[self.current] = None;
-        self.current = (self.current + 1) % DIRECTIONS_CAPACITY;
-        self.size -= 1;
-        if self.size < 2 {
-            panic!("Not enough directions");
-        }
+    fn plan_needed(&self) -> bool {
+        self.planned.is_none()
     }
 
-    fn last(&self) -> Direction {
-        self.directions[(self.current + self.size - 1) % DIRECTIONS_CAPACITY].expect("No last direction")
+    fn set_plan(&mut self, direction: Direction) {
+        self.planned = Some(direction);
     }
 
-    fn push(&mut self, direction: Direction) {
-        self.directions[(self.current + self.size) % DIRECTIONS_CAPACITY] = Some(direction);
-        self.size += 1;
-        if self.size > DIRECTIONS_CAPACITY {
-            panic!("Directions overflow");
-        }
-    }
-
-    fn next(&self) -> Direction {
-        self.directions[(self.current + 1) % DIRECTIONS_CAPACITY].expect("No next direction")
-    }
-
-    fn replace_next(&mut self, direction: Direction) {
-        self.directions[(self.current + 1) % DIRECTIONS_CAPACITY] = Some(direction);
-    }
-
-    fn replace_planned(&mut self, direction: Direction) {
-        let planned = &mut self.directions[(self.current + 2) % DIRECTIONS_CAPACITY];
-        if planned.is_none() {
-            panic!("Trying to replace a non-planned direction");
-        }
-        *planned = Some(direction);
+    fn reverse(&mut self) {
+        self.planned = Some(self.current.opposite());
     }
 }
 
-#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+#[derive(Resource, Component, Debug, Clone, Copy, PartialEq)]
 enum GhostMode {
     Chase,
-    Scatter
+    Scatter,
+    Frightened,
+    Dead,
 }
 
 #[derive(Resource)]
-struct GhostModeTimer{
+struct FriteTimer(Timer);
+
+#[derive(Resource)]
+struct GlobalGhostModeTimer{
     timer: Timer,
     duration_index: usize,
 }
 
-const CHANGE_DURATIONS: [u64; 7] = [7, 20, 7, 20, 5, 20, 5];
+#[derive(Component, EnumIter)]
+enum GhostSprite {
+    Body,
+    Eyes,
+    Frightened,
+}
 
 #[derive(Event)]
-pub struct GhostModeChange {
-    mode: GhostMode,
+struct Collision {
+    ghost: Ghost,
 }
+
+const CHANGE_DURATIONS: [u64; 7] = [7, 20, 7, 20, 5, 20, 5];
 
 pub struct GhostPlugin;
 
 impl Plugin for GhostPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GhostMode::Scatter);
-        app.insert_resource(GhostModeTimer {
+        app.insert_resource(GlobalGhostModeTimer {
             timer: Timer::from_seconds(CHANGE_DURATIONS[0] as f32, TimerMode::Once),
             duration_index: 0,
         });
-        app.add_event::<GhostModeChange>();
+        app.insert_resource(FriteTimer(Timer::from_seconds(0.0, TimerMode::Once)));
+        app.add_event::<Collision>();
         app.add_systems(Startup, spawn_ghosts);
-        app.add_systems(FixedUpdate, (update_ghosts.in_set(GameLoop::Planning),
-                                        evaluate_ghost_mode.in_set(GameLoop::Planning),
-                                        move_ghosts.in_set(GameLoop::Movement), 
-                                        draw_ghosts.after(GameLoop::Planning)
-                                                    .before(GameLoop::Movement)));
+        app.add_systems(FixedUpdate, (update_global_ghost_mode.before(GameLoop::Planning),
+                                      (update_ghost_mode, ghost_tile_change_detection, plan_ghosts)
+                                                 .chain()
+                                                 .in_set(GameLoop::Planning),
+                                      move_ghosts.in_set(GameLoop::Movement), 
+                                      draw_ghosts.after(GameLoop::Movement),
+                                      collision_detection.after(GameLoop::Collisions)));
     }
 }
 
@@ -127,133 +116,143 @@ fn spawn_ghost(ghost: Ghost,
                asset_server: &Res<AssetServer>,
                texture_atlases: &mut ResMut<Assets<TextureAtlas>>) {
     let texture_path = match ghost {
-        Ghost::Blinky => "blinky.png",
-        Ghost::Pinky => "pinky.png",
-        Ghost::Inky => "inky.png",
-        Ghost::Clyde => "clyde.png",
+        Ghost::Blinky => "blinky_body.png",
+        Ghost::Pinky => "pinky_body.png",
+        Ghost::Inky => "inky_body.png",
+        Ghost::Clyde => "clyde_body.png",
     };
 
-    let texture_handle = asset_server.load(texture_path);
-    let texture_atlas =
-            TextureAtlas::from_grid(texture_handle, Vec2::new(16.0, 16.0), 8, 1, None, None);
-    let texture_atlas_handle = texture_atlases.add(texture_atlas);
-
     commands.spawn((
-                Location::new(13.0, 19.0),
-                ghost,
-                GhostDirections::new(),
-                SpriteSheetBundle {
-                    texture_atlas: texture_atlas_handle,
-                    sprite: TextureAtlasSprite::new(0),
-                    transform: Transform::from_xyz(0.0, 0.0, Layers::Ghosts.as_f32()),
-                    ..default()
-                }));
+            Location::new(13.0, 19.0),
+            ghost,
+            GhostDirections::new(),
+            GhostMode::Scatter,
+            SpatialBundle::default()))
+    .with_children(|parent| {
+        for ghost_sprite in GhostSprite::iter() {
+            let (png, number_of_sprites, layer) = match ghost_sprite {
+                GhostSprite::Body => (texture_path, 2, Layers::Ghosts),
+                GhostSprite::Eyes => ("ghost_eyes.png", 4, Layers::GhostsEyes),
+                GhostSprite::Frightened => ("ghosts_frite.png", 4, Layers::Ghosts)
+            };
+
+            let texture_handle = asset_server.load(png);
+            let texture_atlas =
+                TextureAtlas::from_grid(texture_handle, Vec2::new(16.0, 16.0), number_of_sprites, 1, None, None);
+            let texture_atlas_handle = texture_atlases.add(texture_atlas);
+
+            parent.spawn((SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle,
+                sprite: TextureAtlasSprite::new(0),
+                transform: Transform::from_xyz(0.0, 0.0, layer.as_f32()),
+                ..default()
+            },
+            ghost_sprite));
+        }
+    });
 }
 
+fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Location, &Ghost)>,
+                     global_ghost_mode: Res<GhostMode>,
+                     mut pellet_eaten_events: EventReader<PelletEaten>,
+                     mut collision_events: EventReader<Collision>,
+                     mut frite_timer: ResMut<FriteTimer>,
+                     time: Res<Time>) {
+    let power_pellet_eaten = pellet_eaten_events.read().find(|event| event.power).is_some();
+    let frite_timer_finished = frite_timer.0.tick(time.delta()).just_finished();
+    if power_pellet_eaten {
+        frite_timer.0.reset();
+        frite_timer.0.set_duration(Duration::from_secs(7));
+    }
+    let collided_ghosts = collision_events.read().map(|event| event.ghost).collect::<Vec<_>>();
+    query.par_iter_mut().for_each(|(mut mode, mut directions, location, ghost)| {
+        if power_pellet_eaten {
+            if !matches!(*mode, GhostMode::Frightened) {
+                directions.reverse();
+            }
+            *mode = GhostMode::Frightened;
 
+            return;
+        }
 
-fn update_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost), Without<Player>>,
-                 player_query: Query<(&Location, &Direction), With<Player>>,
-                 map: Res<Map>,
-                 ghost_mode: Res<GhostMode>,
-                 mut mode_change_events: EventReader<GhostModeChange>) {
+        match *mode {
+            GhostMode::Frightened => {
+                if collided_ghosts.contains(ghost) {
+                    *mode = GhostMode::Dead;
+                } else if frite_timer_finished {
+                    *mode = *global_ghost_mode;
+                }
+            },
+            GhostMode::Dead => {
+                if *location == Location::new(13.0, 19.0) {
+                    *mode = *global_ghost_mode;
+                }
+            },
+            _ if *mode != *global_ghost_mode => {
+                *mode = *global_ghost_mode;
+                directions.reverse();
+            },
+            _ => (),
+        }
+    });
+}
+
+fn ghost_tile_change_detection(mut query: Query<(&Location, &mut GhostDirections), With<Ghost>>) {
+    query.par_iter_mut().for_each(|(location, mut directions)| {
+        if location.is_tile_center() {
+            directions.advance();
+        }
+    });
+}
+
+fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &GhostMode), Without<Player>>,
+               player_query: Query<(&Location, &Direction), With<Player>>,
+               map: Res<Map>) {
     let map = &*map;
     let (player_location, player_direction) = player_query.single();
     let player_tile = player_location.get_tile(*player_direction);
 
-    //TODO: Temporary initialization to be removed when ghost states are implemented
-    query.iter_mut().for_each(|(_, mut state, _)| {
-        if state.size != 0 {
+    let mut blinky_tile = Location::new(0.0, 0.0);
+    for (location, directions, ghost, _) in query.iter_mut() {
+        if let Ghost::Blinky = *ghost {
+            blinky_tile = location.get_tile(directions.current);
+            break;
+        }
+    }
+
+    query.par_iter_mut().for_each(|(location, mut directions, ghost, mode)| {
+        if !directions.plan_needed() {
             return;
         }
-        state.directions[0] = Some(Direction::Left);
-        state.directions[1] = Some(Direction::Left);
-        state.directions[2] = Some(Direction::Left);
-        state.size = 3;
-    });
 
-    let mut blinky_tile_iter = query.iter().filter_map(|(location, directions, ghost)| {
-        if let Ghost::Blinky = ghost {
-            let current_direction = directions.current();
-            Some(location.get_tile(current_direction))
-        } else { None }
-    });
-
-    let blinky_tile = blinky_tile_iter.next().expect("No blinky");
-    if blinky_tile_iter.next().is_some() {
-        panic!("More than one blinky");
-    }
-
-    let mode_changed = mode_change_events.read().next();
-
-    for (location, mut directions, ghost) in query.iter_mut() {
-        let current_direction = directions.current();
-
-        let current_tile = location.get_tile(current_direction);
-
-
-        if location.is_tile_center() {
-            directions.remove_first();
+        if !map.is_in_map(*location) {
+            let current_direction = directions.current;
+            directions.set_plan(current_direction);
+            return;
         }
 
-        if let Some(GhostModeChange { mode }) = mode_changed {
-            if mode != &GhostMode::Chase {
-                directions.replace_next(current_direction.opposite());
-
-                if directions.size == 3 {
-                    let planning_state = PlanningState {
-                        directions: *directions,
-                        current_tile,
-                        ghost_mode: *mode,
-                        ghost: *ghost,
-                        player_tile,
-                        player_direction: *player_direction,
-                        blinky_tile,
-                        map,
-                    };
-
-                    directions.replace_planned(next_planned_direction(&planning_state));
-                }
-            }
-        }
-
-        if !location.is_on_tile_edge() {
-            continue;
-        }
-
-        if !map.is_in_map(current_tile) {
-            let last_direction = directions.last();
-            directions.push(last_direction);
-            continue;
-        }
-
-        let planning_state = PlanningState {
-            directions: *directions,
-            current_tile,
-            ghost_mode: *ghost_mode,
-            ghost: *ghost,
-            player_tile,
-            player_direction: *player_direction,
-            blinky_tile,
-            map,
+        let target_tile = match *mode {
+            GhostMode::Scatter => Some(scatter(*ghost)),
+            GhostMode::Chase => Some(chase_target(*ghost,
+                                             location.get_tile(directions.current),
+                                             blinky_tile,
+                                             player_tile,
+                                             *player_direction)),
+            GhostMode::Frightened => None,
+            GhostMode::Dead => Some(Location::new(13.0, 19.0)),
         };
 
-        directions.push(next_planned_direction(&planning_state));
-    }
+        let next_tile = location.next_tile(directions.current);
+        let planned_direction = ghost_path_finder(next_tile,
+                                                  target_tile,
+                                                  map,
+                                                  directions.current);
+
+        directions.set_plan(planned_direction);
+    });
 }
 
-struct PlanningState<'a> {
-    directions: GhostDirections,
-    current_tile: Location,
-    ghost_mode: GhostMode,
-    ghost: Ghost,
-    player_tile: Location,
-    player_direction: Direction,
-    blinky_tile: Location,
-    map: &'a Map,
-}
-
-fn scatter(ghost: &Ghost) -> Location {
+fn scatter(ghost: Ghost) -> Location {
     match ghost {
         Ghost::Blinky => Location::new(28.0, 30.0),
         Ghost::Pinky => Location::new(2.0, 30.0),
@@ -262,19 +261,21 @@ fn scatter(ghost: &Ghost) -> Location {
     }
 }
 
-fn chase_target(planning_state: &PlanningState) -> Location {
-    let PlanningState { ghost, player_tile, player_direction, blinky_tile, current_tile, .. } = planning_state;
-    let player_tile = *player_tile;
+fn chase_target(ghost: Ghost,
+                current_tile: Location,
+                blinky_tile: Location,
+                player_tile: Location,
+                player_direction: Direction) -> Location {
     match ghost {
         Ghost::Blinky => player_tile,
         Ghost::Pinky => player_tile + player_direction.get_vec() * 4.0,
         Ghost::Inky => {
             let offset_tile = player_tile + player_direction.get_vec() * 2.0;
-            let blinky_offset_vector = offset_tile - *blinky_tile;
-            *blinky_tile + blinky_offset_vector * 2.0
+            let blinky_offset_vector = offset_tile - blinky_tile;
+            blinky_tile + blinky_offset_vector * 2.0
         },
         Ghost::Clyde => {
-            let distance = (player_tile - *current_tile).length_squared();
+            let distance = (player_tile - current_tile).length_squared();
             if distance > 8.0 * 8.0 {
                 player_tile
             } else {
@@ -285,7 +286,7 @@ fn chase_target(planning_state: &PlanningState) -> Location {
 }
 
 fn ghost_path_finder(next_tile: Location,
-                     target_tile: Location,
+                     target_tile: Option<Location>,
                      map: &Map,
                      current_direction: Direction) -> Direction {
     let mut possible_directions = map.possible_directions(next_tile);
@@ -294,56 +295,107 @@ fn ghost_path_finder(next_tile: Location,
         *direction != current_direction.opposite()
     });
 
-    possible_directions.sort_by(|direction1, direction2| {
-        let tile1 = next_tile.next_tile(*direction1);
-        let tile2 = next_tile.next_tile(*direction2);
+    if let Some(target_tile) = target_tile {
+        possible_directions.sort_by(|direction1, direction2| {
+            let tile1 = next_tile.next_tile(*direction1);
+            let tile2 = next_tile.next_tile(*direction2);
 
-        let distance1 = (tile1 - target_tile).length_squared();
-        let distance2 = (tile2 - target_tile).length_squared();
+            let distance1 = (tile1 - target_tile).length_squared();
+            let distance2 = (tile2 - target_tile).length_squared();
 
-        distance1.partial_cmp(&distance2).unwrap()
-    });
+            distance1.partial_cmp(&distance2).unwrap()
+        });
 
-    possible_directions[0]
+        possible_directions[0]
+    } else {
+        let direction_index = fastrand::usize(0..possible_directions.len());
+        possible_directions[direction_index]
+    }
 }
 
 fn move_ghosts(mut query: Query<(&mut Location, &GhostDirections), With<Ghost>>) {
     query.par_iter_mut().for_each(|(mut location, directions)| {
-        let current_direction = directions.current();
-        location.advance(current_direction);
+        location.advance(directions.current);
     });
 }
 
-fn draw_ghosts(mut query: Query<(&mut TextureAtlasSprite, &GhostDirections, &Location), With<Ghost>>) {
-    query.par_iter_mut().for_each(|(mut sprite, directions, location)| {
-        if !location.is_tile_center() {
-            return;
+fn draw_ghosts(mut query: Query<(&GhostDirections,
+                                 &Location,
+                                 &GhostMode,
+                                 &Children),
+                                 With<Ghost>>,
+               mut eyes_query: Query<(&mut TextureAtlasSprite, 
+                                      &mut Visibility,
+                                      &GhostSprite),
+                                      Without<Ghost>>,
+              frite_timer: Res<FriteTimer>) {
+    for (directions, location, mode, children) in query.iter_mut() {
+        for child in children.iter() {
+            let (mut sprite, mut visibility, sprite_type) = eyes_query.get_mut(*child).expect("Ghost without sprite");
+            match sprite_type {
+                GhostSprite::Body => {
+                    if let GhostMode::Chase | GhostMode::Scatter = *mode {
+                        *visibility = Visibility::Inherited;
+                    } else {
+                        *visibility = Visibility::Hidden;
+                    }
+
+                    if location.is_tile_center() {
+                        sprite.index = (sprite.index + 1) % 2;
+                    }
+                },
+                GhostSprite::Eyes => {
+                    if let GhostMode::Frightened = *mode {
+                        *visibility = Visibility::Hidden;
+                    } else {
+                        *visibility = Visibility::Inherited;
+                    }
+
+                    if location.is_tile_center() {
+                        let rotation = (directions.current.rotation() * 4.0) as usize;
+                        sprite.index = rotation;
+                    }
+                },
+                GhostSprite::Frightened => {
+                    if let GhostMode::Frightened = *mode {
+                        *visibility = Visibility::Inherited;
+                    } else {
+                        *visibility = Visibility::Hidden;
+                    }
+
+                    let remaining_time = frite_timer.0.remaining_secs();
+
+                    if location.is_tile_center() {
+                        let variation = (sprite.index + 1) % 2;
+                        const FLASHING_TIMING: f32 = 1.0 / 2.0;
+                        const START_FLASHING_TIME: f32 = FLASHING_TIMING * 5.0;
+                        let flashing = if remaining_time > START_FLASHING_TIME {
+                            false
+                        } else {
+                            let cycle = (remaining_time % FLASHING_TIMING) / FLASHING_TIMING;
+                            cycle > 0.5
+                        };
+
+                        sprite.index = variation + if flashing { 2 } else { 0 };
+                    }
+                },
+            }
         }
-
-        let current_direction = directions.current();
-
-        let rotation = (current_direction.rotation() * 4.0) as usize;
-
-        let variation = (sprite.index + 1) % 2;
-
-        sprite.index = rotation * 2 + variation;
-    });
+    }
 }
 
-fn evaluate_ghost_mode(mut ghost_mode: ResMut<GhostMode>,
-                       mut mode: ResMut<GhostModeTimer>,
-                       time: Res<Time>, 
-                       mut mode_change_events: EventWriter<GhostModeChange>) {
+fn update_global_ghost_mode(mut global_ghost_mode: ResMut<GhostMode>,
+                       mut mode: ResMut<GlobalGhostModeTimer>,
+                       time: Res<Time>) {
     if !mode.timer.tick(time.delta()).just_finished() {
         return;
     }
 
-    *ghost_mode = match *ghost_mode {
+    *global_ghost_mode = match *global_ghost_mode {
         GhostMode::Chase => GhostMode::Scatter,
         GhostMode::Scatter => GhostMode::Chase,
+        _ => unreachable!(),
     };
-
-    mode_change_events.send(GhostModeChange { mode: *ghost_mode });
 
     mode.duration_index += 1;
     if let Some(duration) = CHANGE_DURATIONS.get(mode.duration_index) {
@@ -352,18 +404,16 @@ fn evaluate_ghost_mode(mut ghost_mode: ResMut<GhostMode>,
     }
 }
 
-fn next_planned_direction(planning_state: &PlanningState) -> Direction {
-    let PlanningState { directions, current_tile, ghost_mode, ghost, map, .. } = planning_state;
-    let next_direction = directions.next();
-    let next_tile = current_tile.next_tile(next_direction);
+fn collision_detection(query: Query<(&Location, &Ghost)>,
+                       player_query: Query<&Location, With<Player>>,
+                       mut collision_events: EventWriter<Collision>) {
+    let player_location = player_query.single();
 
-    let target_tile = match ghost_mode {
-                GhostMode::Chase => chase_target(planning_state),
-                GhostMode::Scatter => scatter(ghost)
-            };
-
-    ghost_path_finder(next_tile,
-                              target_tile,
-                              map,
-                              next_direction)
+    for (location, ghost) in query.iter() {
+        let location_dif = *location - *player_location;
+        let distance_squared = location_dif.length_squared();
+        if distance_squared < 0.5 * 0.5 {
+            collision_events.send(Collision { ghost: *ghost });
+        }
+    }
 }
