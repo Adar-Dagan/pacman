@@ -41,16 +41,20 @@ fn update_entities_location(mut query: Query<(&mut Transform, &Location), Change
 
 fn map_wrap(mut query: Query<&mut Location>, map: Res<Map>) {
     query.par_iter_mut().for_each(|mut location| {
-        if location.x == -2.0 {
-            location.x = map.width() as f32 + 1.0;
-        } else if location.x == (map.width() as f32 + 1.0) {
-            location.x = -2.0;
+        if location.x <= -2.0 {
+            let dif = location.x + 2.0;
+            location.x = map.width() as f32 + 1.0 + dif;
+        } else if location.x >= (map.width() as f32 + 1.0) {
+            let dif = location.x - (map.width() as f32 + 1.0);
+            location.x = -2.0 + dif;
         }
 
-        if location.y == -2.0 {
-            location.y = map.height() as f32 + 1.0;
+        if location.y <= -2.0 {
+            let dif = location.y + 2.0;
+            location.y = map.height() as f32 + 1.0 + dif;
         } else if location.y == (map.height() as f32 + 1.0) {
-            location.y = -2.0;
+            let dif = location.y - (map.height() as f32 + 1.0);
+            location.y = -2.0 + dif;
         }
     });
 }
