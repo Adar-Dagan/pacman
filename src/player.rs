@@ -2,6 +2,7 @@ use std::f32::consts::TAU;
 use std::time::Duration;
 
 use bevy::prelude::*;
+use strum::IntoEnumIterator;
 
 use crate::common::app_state::AppState;
 use crate::common::layers::Layers;
@@ -65,13 +66,17 @@ fn spawn_characters(mut commands: Commands,
 }
 
 fn update_player(mut query: Query<(&Location, 
-                                   &mut Direction),
-                                   With<Player>>,
+                                   &mut Direction,
+                                   &Player)>,
                  map: Res<Map>,
                  key: Res<Input<KeyCode>>) {
-    let (location, mut direction) = query.single_mut();
+    let (location, mut direction, player) = query.single_mut();
 
-    let possible_directions = map.possible_directions(*location);
+    let possible_directions = if player.is_blocked {
+        Direction::iter().collect::<Vec<_>>()
+    } else {
+        map.possible_directions(*location)
+    };
 
     let new_direction = possible_directions.iter().filter(|direction| {
         match **direction {
