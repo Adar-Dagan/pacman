@@ -568,16 +568,20 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
             let (mut sprite, mut visibility, sprite_type) = sprites_query.get_mut(*child).expect("Ghost without sprite");
             let is_frightened = matches!(*mode, GhostMode::Frightened | GhostMode::Home(true) | GhostMode::HomeExit(true));
 
+            let change_variation = match *mode {
+                GhostMode::Home(_) | GhostMode::HomeExit(_) => location.y.fract() == 0.5,
+                _ => location.is_tile_center(),
+            };
+            let variation = (sprite.index + if change_variation { 1 } else { 0 }) % 2;
+
             match sprite_type {
                 GhostSprite::Body => {
                     if is_frightened || matches!(*mode, GhostMode::Dead(_)) {
                         *visibility = Visibility::Hidden;
                     } else {
                         *visibility = Visibility::Inherited;
-                    }
 
-                    if location.is_tile_center() {
-                        sprite.index = (sprite.index + 1) % 2;
+                        sprite.index = variation;
                     }
                 },
                 GhostSprite::Eyes => {
@@ -585,22 +589,19 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
                         *visibility = Visibility::Hidden;
                     } else {
                         *visibility = Visibility::Inherited;
-                    }
 
-                    let rotation = (directions.current.rotation() * 4.0) as usize;
-                    sprite.index = rotation;
+                        let rotation = (directions.current.rotation() * 4.0) as usize;
+                        sprite.index = rotation;
+                    }
                 },
                 GhostSprite::Frightened => {
-                    if is_frightened {
-                        *visibility = Visibility::Inherited;
-                    } else {
+                    if !is_frightened {
                         *visibility = Visibility::Hidden;
-                    }
+                    } else {
+                        *visibility = Visibility::Inherited;
 
-                    let remaining_time = frite_timer.0.remaining_secs();
+                        let remaining_time = frite_timer.0.remaining_secs();
 
-                    if location.is_tile_center() {
-                        let variation = (sprite.index + 1) % 2;
                         const FLASHING_TIMING: f32 = 1.0 / 2.0;
                         const START_FLASHING_TIME: f32 = FLASHING_TIMING * 5.0;
                         let flashing = if remaining_time > START_FLASHING_TIME {

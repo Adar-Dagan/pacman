@@ -87,7 +87,6 @@ fn advance_global_timer(mut pause_timer: ResMut<CollisionPauseTimer>,
                         time: Res<Time>,
                         mut collisions_events: EventReader<Collision>) {
     pause_timer.0.tick(time.delta());
-    println!("Pause timer: {}", pause_timer.0.elapsed_secs());
 
     for event in collisions_events.read() {
         if matches!(event.mode, GhostMode::Frightened) {
