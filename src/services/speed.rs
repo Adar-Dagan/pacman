@@ -10,7 +10,7 @@ pub struct CharacterSpeed {
 
 impl CharacterSpeed {
     pub fn new(speed: f32) -> Self {
-        assert!(speed > 0.0 && speed <= 1.05);
+        assert!(speed >= 0.0 && speed <= 1.05);
         Self {
             speed,
             advancement_counter: 0.0,
@@ -20,7 +20,7 @@ impl CharacterSpeed {
     }
 
     pub fn set_speed(&mut self, speed: f32) {
-        assert!(speed > 0.0 && speed <= 1.05);
+        assert!(speed >= 0.0 && speed <= 1.05);
         if speed != self.speed {
             self.speed = speed;
             self.advancement_counter = 0.0;

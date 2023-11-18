@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use strum::{ EnumIter, IntoEnumIterator };
 
 use crate::common::app_state::{AppState, StateTimer};
-use crate::common::events::PelletEaten;
+use crate::common::events::{PelletEaten, Collision, CollisionPauseTimer};
 use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::pellets::TotalPellets;
@@ -15,7 +15,7 @@ use crate::services::speed::CharacterSpeed;
 const GHOST_DEBUG: bool = false;
 
 #[derive(Component, EnumIter, Clone, Copy, PartialEq)]
-enum Ghost {
+pub enum Ghost {
     Blinky,
     Pinky,
     Inky,
@@ -55,12 +55,13 @@ impl GhostDirections {
 }
 
 #[derive(Resource, Component, Debug, Clone, Copy, PartialEq)]
-enum GhostMode {
+pub enum GhostMode {
     Home(bool),
     HomeExit(bool),
     Chase,
     Scatter,
     Frightened,
+    DeadPause,
     Dead(bool),
 }
 
@@ -78,11 +79,6 @@ enum GhostSprite {
     Body,
     Eyes,
     Frightened,
-}
-
-#[derive(Event)]
-struct Collision {
-    ghost: Ghost,
 }
 
 #[derive(Resource)]
@@ -105,12 +101,13 @@ impl Plugin for GhostPlugin {
         app.insert_resource(FriteTimer(Timer::from_seconds(0.0, TimerMode::Once)));
         app.insert_resource(GhostPelletEatenCounter { counter: 0, life_lost: false });
 
-        app.add_event::<Collision>();
-
         app.add_systems(OnEnter(AppState::LevelStart), spawn_ghosts);
         app.add_systems(OnEnter(AppState::MainGame), init_resources);
-        app.add_systems(FixedUpdate, update_global_ghost_mode.before(GameLoop::Planning).run_if(in_state(AppState::MainGame)));
-        app.add_systems(FixedUpdate, (update_ghost_mode, update_ghost_speed, ghost_tile_change_detection, plan_ghosts)
+        app.add_systems(FixedUpdate, (update_global_ghost_mode,
+                                      update_ghost_mode,
+                                      update_ghost_speed,
+                                      ghost_tile_change_detection,
+                                      plan_ghosts)
                         .chain()
                         .in_set(GameLoop::Planning));
         app.add_systems(FixedUpdate, move_ghosts.in_set(GameLoop::Movement));
@@ -203,6 +200,7 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
                      mut ghost_pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
                      mut collision_events: EventReader<Collision>,
                      mut frite_timer: ResMut<FriteTimer>,
+                     pause_timer: Res<CollisionPauseTimer>,
                      time: Res<Time>) {
     ghost_pellet_eaten_counter.counter += pellet_eaten_events.len();
     let power_pellet_eaten = pellet_eaten_events.read().find(|event| event.power).is_some();
@@ -219,6 +217,7 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
             *mode = match *mode {
                 GhostMode::Home(_) => GhostMode::Home(true),
                 GhostMode::HomeExit(_) => GhostMode::HomeExit(true),
+                GhostMode::DeadPause => GhostMode::DeadPause,
                 GhostMode::Dead(enter_home) => GhostMode::Dead(enter_home),
                 _ => GhostMode::Frightened,
             };
@@ -232,9 +231,14 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
         match *mode {
             GhostMode::Frightened => {
                 if collided_ghosts.contains(ghost) {
-                    *mode = GhostMode::Dead(false);
+                    *mode = GhostMode::DeadPause;
                 } else if frite_timer_finished {
                     *mode = *global_ghost_mode;
+                }
+            },
+            GhostMode::DeadPause => {
+                if pause_timer.0.finished() {
+                    *mode = GhostMode::Dead(false);
                 }
             },
             GhostMode::Dead(false) => {
@@ -290,12 +294,15 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
 
 fn update_ghost_speed(mut query: Query<(&mut CharacterSpeed, &GhostMode, &Location, &Ghost)>,
                       pellets_eaten_counter: Res<GhostPelletEatenCounter>,
-                      total_pellets: Res<TotalPellets>) {
+                      total_pellets: Res<TotalPellets>,
+                      pause_timer: Res<CollisionPauseTimer>) {
     query.par_iter_mut().for_each(|(mut speed, mode, location, ghost)| {
         let in_tunnel = location.y == 16.0 && (location.x <= 5.0 || location.x >= 22.0);
         
         let mode_speed = if let GhostMode::Dead(_) = *mode {
             1.05
+        } else if !pause_timer.0.finished() {
+            0.0
         } else if in_tunnel {
             0.4
         } else {
@@ -342,7 +349,10 @@ fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &Ghost
     }
 
     query.par_iter_mut().for_each(|(location, mut directions, ghost, mode)| {
-        if let GhostMode::Home(_) | GhostMode::HomeExit(_) | GhostMode::Dead(true) = *mode {
+        if let GhostMode::Home(_) |
+                GhostMode::HomeExit(_) |
+                GhostMode::Dead(true) |
+                GhostMode::DeadPause = *mode {
             return;
         }
 
@@ -365,7 +375,10 @@ fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &Ghost
                                              *player_direction)),
             GhostMode::Frightened => None,
             GhostMode::Dead(false) => Some(Location::new(13.5, 19.0)),
-            GhostMode::Home(_) | GhostMode::HomeExit(_) | GhostMode::Dead(true) => unreachable!(),
+            GhostMode::Home(_) |
+                GhostMode::HomeExit(_) |
+                GhostMode::Dead(true) | 
+                GhostMode::DeadPause => unreachable!(),
         };
 
         let next_tile = location.next_tile(directions.current);
@@ -519,6 +532,7 @@ fn move_ghosts(mut query: Query<(&mut Location, &mut GhostDirections, &GhostMode
 fn draw_ghosts(mut query: Query<(&GhostDirections,
                                  &Location,
                                  &GhostMode,
+                                 &mut Visibility,
                                  &Children),
                                  With<Ghost>>,
                mut sprites_query: Query<(&mut TextureAtlasSprite, 
@@ -526,7 +540,15 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
                                       &GhostSprite),
                                       Without<Ghost>>,
               frite_timer: Res<FriteTimer>) {
-    for (directions, location, mode, children) in query.iter_mut() {
+    for (directions, location, mode, mut visibility, children) in query.iter_mut() {
+
+        if let GhostMode::DeadPause = *mode {
+            *visibility = Visibility::Hidden;
+            continue;
+        } else {
+            *visibility = Visibility::Inherited;
+        }
+
         for child in children.iter() {
             let (mut sprite, mut visibility, sprite_type) = sprites_query.get_mut(*child).expect("Ghost without sprite");
             let is_frightened = matches!(*mode, GhostMode::Frightened | GhostMode::Home(true) | GhostMode::HomeExit(true));
@@ -601,16 +623,16 @@ fn update_global_ghost_mode(mut global_ghost_mode: ResMut<GhostMode>,
     }
 }
 
-fn collision_detection(query: Query<(&Location, &Ghost)>,
+fn collision_detection(query: Query<(&Location, &Ghost, &GhostMode)>,
                        player_query: Query<&Location, With<Player>>,
                        mut collision_events: EventWriter<Collision>) {
     let player_location = player_query.single();
 
-    for (location, ghost) in query.iter() {
+    for (location, ghost, mode) in query.iter() {
         let location_dif = *location - *player_location;
         let distance_squared = location_dif.length_squared();
         if distance_squared < 0.5 * 0.5 {
-            collision_events.send(Collision { ghost: *ghost });
+            collision_events.send(Collision { ghost: *ghost, mode: *mode });
         }
     }
 }

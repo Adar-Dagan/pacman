@@ -7,7 +7,7 @@ use crate::common::app_state::AppState;
 use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::services::map::{Direction, Map, Location};
-use crate::common::events::{PlayerAt, PelletEaten};
+use crate::common::events::{PlayerAt, CollisionPauseTimer, PelletEaten};
 use crate::services::speed::CharacterSpeed;
 
 #[derive(Component)]
@@ -90,17 +90,18 @@ fn update_player(mut query: Query<(&Location,
 fn move_player(mut query: Query<(&mut Location, &Direction, &mut CharacterSpeed, &mut Player)>,
                map: Res<Map>,
                mut player_at_events: EventWriter<PlayerAt>,
-               mut timer: ResMut<PelletEatenTimer>,
+               mut pellets_eaten_timer: ResMut<PelletEatenTimer>,
+               pause_timer: Res<CollisionPauseTimer>,
                time: Res<Time>,
                mut pellets_eaten_events: EventReader<PelletEaten>,
                next_game_state: Res<NextState<AppState>>) {
     const PELLET_STOP_TIME: f32 = 1.0 / 60.0;
     for event in pellets_eaten_events.read() {
-        timer.0.set_duration(Duration::from_secs_f32(PELLET_STOP_TIME * if event.power { 3.0 } else { 1.0 }));
-        timer.0.reset();
+        pellets_eaten_timer.0.set_duration(Duration::from_secs_f32(PELLET_STOP_TIME * if event.power { 3.0 } else { 1.0 }));
+        pellets_eaten_timer.0.reset();
     }
 
-    if !timer.0.tick(time.delta()).finished() {
+    if !pellets_eaten_timer.0.tick(time.delta()).finished() || !pause_timer.0.finished() {
         return;
     }
 
@@ -149,8 +150,10 @@ fn update_pacman_sprite(mut query: Query<(&Location,
                                           &mut Transform,
                                           &Direction,
                                           &mut TextureAtlasSprite,
-                                          &Player)>) {
-    let (location, mut transform, direction, mut sprite, player) = 
+                                          &mut Visibility,
+                                          &Player)>, 
+                        collision_pause_timer: Res<CollisionPauseTimer>) {
+    let (location, mut transform, direction, mut sprite, mut visibility, player) = 
         query.single_mut();
 
     let index = if player.is_blocked {
@@ -175,6 +178,12 @@ fn update_pacman_sprite(mut query: Query<(&Location,
     let rotation = Quat::from_rotation_z(TAU * direction.rotation());
     if transform.rotation != rotation {
         transform.rotation = rotation;
+    }
+
+    if collision_pause_timer.0.finished() {
+        *visibility = Visibility::Inherited;
+    } else {
+        *visibility = Visibility::Hidden;
     }
 }
 

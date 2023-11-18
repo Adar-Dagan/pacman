@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-use common::{app_state::{AppState, StateTimer}, events::{PelletEaten, PlayerAt}};
+use common::{app_state::{AppState, StateTimer}, events::{PelletEaten, PlayerAt, Collision, CollisionPauseTimer}, sets::GameLoop};
+use ghosts::GhostMode;
 
 mod common;
 mod services;
@@ -20,6 +21,7 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_hz(MAX_MOVE_SPEED))
         .add_event::<PlayerAt>()
         .add_event::<PelletEaten>()
+        .add_event::<Collision>()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(bevy_framepace::FramepacePlugin)
         .add_plugins((map_render::MapRenderPlugin, 
@@ -28,10 +30,11 @@ fn main() {
                       ghosts::GhostPlugin))
         .add_state::<AppState>()
         .insert_resource(StateTimer(Timer::from_seconds(5.0, TimerMode::Once)))
+        .insert_resource(CollisionPauseTimer(Timer::from_seconds(0.0, TimerMode::Once)))
         .add_systems(Startup, (camera_setup, frame_rate_limiter))
         .add_systems(Update, state_transition)
         .add_systems(PostUpdate, state_transition_timer)
-        .add_systems(Update, print_state)
+        .add_systems(FixedUpdate, advance_global_timer.before(GameLoop::Planning))
         .configure_sets(FixedUpdate, (
             common::sets::GameLoop::Planning,
             common::sets::GameLoop::Movement,
@@ -80,6 +83,16 @@ fn state_transition_timer(mut timer: ResMut<StateTimer>, next_state: Res<NextSta
     }
 }
 
-fn print_state(state: Res<State<AppState>>) {
-    // println!("{:?}", state.get());
+fn advance_global_timer(mut pause_timer: ResMut<CollisionPauseTimer>, 
+                        time: Res<Time>,
+                        mut collisions_events: EventReader<Collision>) {
+    pause_timer.0.tick(time.delta());
+    println!("Pause timer: {}", pause_timer.0.elapsed_secs());
+
+    for event in collisions_events.read() {
+        if matches!(event.mode, GhostMode::Frightened) {
+            pause_timer.0.set_duration(Duration::from_secs(1));
+            pause_timer.0.reset();
+        }
+    }
 }
