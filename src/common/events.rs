@@ -11,3 +11,4 @@ pub struct PlayerAt {
 pub struct PelletEaten {
     pub power: bool
 }
+

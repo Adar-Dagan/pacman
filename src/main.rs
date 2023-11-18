@@ -1,4 +1,8 @@
+use std::time::Duration;
+
 use bevy::prelude::*;
+
+use common::{app_state::{AppState, StateTimer}, events::{PelletEaten, PlayerAt}};
 
 mod common;
 mod services;
@@ -14,20 +18,26 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .insert_resource(Time::<Fixed>::from_hz(MAX_MOVE_SPEED))
-        .add_event::<common::events::PlayerAt>()
-        .add_event::<common::events::PelletEaten>()
+        .add_event::<PlayerAt>()
+        .add_event::<PelletEaten>()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(bevy_framepace::FramepacePlugin)
         .add_plugins((map_render::MapRenderPlugin, 
                       pellets::PelletsPlugin,
                       player::PlayerPlugin,
                       ghosts::GhostPlugin))
+        .add_state::<AppState>()
+        .insert_resource(StateTimer(Timer::from_seconds(5.0, TimerMode::Once)))
         .add_systems(Startup, (camera_setup, frame_rate_limiter))
+        .add_systems(Update, state_transition)
+        .add_systems(PostUpdate, state_transition_timer)
+        .add_systems(Update, print_state)
         .configure_sets(FixedUpdate, (
             common::sets::GameLoop::Planning,
             common::sets::GameLoop::Movement,
             common::sets::GameLoop::Collisions,
-                ).chain())
+                ).chain()
+                 .run_if(in_state(AppState::MainGame)))
         .run();
 }
 
@@ -39,4 +49,37 @@ fn camera_setup(mut commands: Commands) {
 
 fn frame_rate_limiter(mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
     settings.limiter = bevy_framepace::Limiter::from_framerate(MAX_MOVE_SPEED);
+}
+
+fn state_transition(state: Res<State<AppState>>, 
+                    mut next_state: ResMut<NextState<AppState>>,
+                    mut timer: ResMut<StateTimer>,
+                    time: Res<Time>) {
+    if timer.0.tick(time.delta()).just_finished() {
+         match state.get() {
+            AppState::MainMenu => next_state.set(AppState::LevelStart),
+            AppState::LevelStart => next_state.set(AppState::MainGame),
+            AppState::MainGame => (),
+            AppState::LevelComplete => next_state.set(AppState::LevelStart),
+            AppState::GameOver => next_state.set(AppState::MainMenu),
+        };
+    }
+}
+
+fn state_transition_timer(mut timer: ResMut<StateTimer>, next_state: Res<NextState<AppState>>) {
+    if let Some(next_state) = &next_state.0 {
+        let secs_to_next_chage = match next_state {
+            AppState::MainMenu => 3,
+            AppState::LevelStart => 3,
+            AppState::MainGame => return,
+            AppState::LevelComplete => 6,
+            AppState::GameOver => return,
+        };
+        timer.0.set_duration(Duration::from_secs(secs_to_next_chage));
+        timer.0.reset();
+    }
+}
+
+fn print_state(state: Res<State<AppState>>) {
+    // println!("{:?}", state.get());
 }
