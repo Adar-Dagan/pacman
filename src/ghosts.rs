@@ -103,7 +103,8 @@ impl Plugin for GhostPlugin {
 
         app.add_systems(OnEnter(AppState::LevelStart), spawn_ghosts);
         app.add_systems(OnEnter(AppState::MainGame), init_resources);
-        app.add_systems(FixedUpdate, (update_global_ghost_mode,
+        app.add_systems(FixedUpdate, (timer_pause,
+                                      update_global_ghost_mode,
                                       update_ghost_mode,
                                       update_ghost_speed,
                                       ghost_tile_change_detection,
@@ -194,6 +195,18 @@ fn init_resources(mut global_ghost_mode: ResMut<GhostMode>,
     pellet_eaten_counter.life_lost = false;
 }
 
+fn timer_pause(pause_timer: Res<CollisionPauseTimer>,
+               mut frite_timer: ResMut<FriteTimer>,
+               mut global_mode_timer: ResMut<GlobalGhostModeTimer>) {
+    if pause_timer.0.finished() {
+        frite_timer.0.unpause();
+        global_mode_timer.timer.unpause();
+    } else {
+        frite_timer.0.pause();
+        global_mode_timer.timer.pause();
+    }
+}
+
 fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Location, &Ghost)>,
                      global_ghost_mode: Res<GhostMode>,
                      mut pellet_eaten_events: EventReader<PelletEaten>,
@@ -210,7 +223,9 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
         frite_timer.0.reset();
         frite_timer.0.set_duration(Duration::from_secs(6));
     }
+
     let collided_ghosts = collision_events.read().map(|event| event.ghost).collect::<Vec<_>>();
+
     query.par_iter_mut().for_each(|(mut mode, mut directions, location, ghost)| {
         if power_pellet_eaten {
             let prev_mode = *mode;
