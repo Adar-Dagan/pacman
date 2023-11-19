@@ -25,7 +25,7 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_hz(MAX_MOVE_SPEED))
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(bevy_framepace::FramepacePlugin)
-        .insert_resource(StateTimer(Timer::from_seconds(5.0, TimerMode::Once)))
+        .insert_resource(StateTimer(Timer::from_seconds(2.0, TimerMode::Once)))
         .insert_resource(CollisionPauseTimer(Timer::from_seconds(
             0.0,
             TimerMode::Once,

@@ -293,11 +293,12 @@ fn update_ghost_mode(
     levels: Res<Levels>,
     time: Res<Time>,
 ) {
-    let inky_is_in_home = query
-        .iter()
-        .find(|(_, _, _, ghost)| **ghost == Ghost::Inky)
-        .map(|(mode, _, _, _)| matches!(*mode, GhostMode::Home(_) | GhostMode::HomeExit(_)))
-        .expect("Inky not found");
+    let inky_is_in_home = GHOST_DEBUG
+        || query
+            .iter()
+            .find(|(_, _, _, ghost)| **ghost == Ghost::Inky)
+            .map(|(mode, _, _, _)| matches!(*mode, GhostMode::Home(_) | GhostMode::HomeExit(_)))
+            .expect("Inky not found");
 
     if !pellet_eaten_events.is_empty() {
         exit_home_timer.0.reset();
@@ -341,7 +342,7 @@ fn update_ghost_mode(
             if prev_mode != *mode {
                 directions.reverse();
             }
-            return;
+            continue;
         }
 
         match *mode {

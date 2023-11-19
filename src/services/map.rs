@@ -25,6 +25,7 @@ impl Location {
     pub fn from_vec(vec: Vec2) -> Self {
         assert!(vec.x.fract() % Self::ADVANCEMENT_DELTA == 0.0);
         assert!(vec.y.fract() % Self::ADVANCEMENT_DELTA == 0.0);
+
         Self { vec }
     }
 
@@ -96,8 +97,9 @@ pub struct Map {
 
 impl Map {
     pub fn parse(map_text: &str) -> Self {
-        let height = map_text.lines().next().unwrap().len();
+        let height = map_text.lines().next().expect("Got empty map").len();
         let width = map_text.lines().count();
+
         let map = map_text
             .lines()
             .flat_map(|line| {
@@ -130,20 +132,19 @@ impl Map {
     }
 
     pub fn is_blocked(&self, location: Location) -> bool {
-        if let Some(Tile::Empty) | None = self.get(location) {
-            false
-        } else {
-            true
-        }
+        !matches!(self.get(location), Some(Tile::Empty) | None)
     }
 
     fn get(&self, location: Location) -> Option<&Tile> {
-        let x = location.x.round();
-        let y = location.y.round();
-        if x < 0.0 || y < 0.0 {
+        let tile_vec = location.round();
+
+        if !self.is_in_map(Location { vec: tile_vec }) {
             None
         } else {
-            self.map.get((x as usize) * self.height + (y as usize))
+            let x = tile_vec.x as usize;
+            let y = tile_vec.y as usize;
+
+            self.map.get(x * self.height + y)
         }
     }
 
@@ -160,11 +161,11 @@ impl Map {
     }
 
     fn y_is_in_map(&self, y: f32) -> bool {
-        y > 0.0 && y < (self.height - 1) as f32
+        y >= 0.0 && y <= (self.height - 1) as f32
     }
 
     fn x_is_in_map(&self, x: f32) -> bool {
-        x > 0.0 && x < (self.width - 1) as f32
+        x >= 0.0 && x <= (self.width - 1) as f32
     }
 
     // for debugging
