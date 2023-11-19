@@ -106,6 +106,7 @@ impl Plugin for GhostPlugin {
 
         app.add_systems(OnEnter(AppState::LevelStart), spawn_ghosts);
         app.add_systems(OnEnter(AppState::MainGame), init_resources);
+        app.add_systems(FixedUpdate, advance_global_timer.before(GameLoop::Planning));
         app.add_systems(FixedUpdate, (timer_pause,
                                       update_global_ghost_mode,
                                       update_ghost_mode,
@@ -707,3 +708,17 @@ fn despawn_ghosts(mut commands: Commands,
         }
     }
 }
+
+fn advance_global_timer(mut pause_timer: ResMut<CollisionPauseTimer>, 
+                        time: Res<Time>,
+                        mut collisions_events: EventReader<Collision>) {
+    pause_timer.0.tick(time.delta());
+
+    for event in collisions_events.read() {
+        if matches!(event.mode, GhostMode::Frightened) {
+            pause_timer.0.set_duration(Duration::from_secs(1));
+            pause_timer.0.reset();
+        }
+    }
+}
+
