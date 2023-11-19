@@ -116,4 +116,19 @@ impl Levels {
             _ => unreachable!(),
         }.get(index).copied()
     }
+
+    pub fn inky_home_exit_dots(&self) -> usize {
+        match self.current {
+            1 => 30,
+            _ => 0,
+        }
+    }
+
+    pub fn clyde_home_exit_dots(&self) -> usize {
+        match self.current {
+            1 => 90,
+            2 => 50,
+            _ => 0,
+        }
+    }
 }

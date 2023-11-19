@@ -278,10 +278,10 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
                 }
 
                 match *ghost {
-                    Ghost::Inky if ghost_pellet_eaten_counter.counter >= 30 => {
+                    Ghost::Inky if ghost_pellet_eaten_counter.counter >= levels.inky_home_exit_dots() => {
                         *mode = GhostMode::HomeExit(frightened);
                     },
-                    Ghost::Clyde if ghost_pellet_eaten_counter.counter >= 90 => {
+                    Ghost::Clyde if ghost_pellet_eaten_counter.counter >= levels.clyde_home_exit_dots() => {
                         *mode = GhostMode::HomeExit(frightened);
                     },
                     _ => (),
