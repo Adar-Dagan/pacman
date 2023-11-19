@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 
 use crate::common::app_state::{AppState, StateTimer};
-use crate::services::map::{Map, Location}; 
-use crate::common::sets::GameLoop;
 use crate::common::layers::Layers;
+use crate::common::sets::GameLoop;
+use crate::services::map::{Location, Map};
 
 #[derive(Component)]
 struct MapComponent;
@@ -20,9 +20,13 @@ impl Plugin for MapRenderPlugin {
         app.insert_resource(Map::parse(MAP_TEXT));
         app.add_systems(OnEnter(AppState::LevelStart), render_map);
         app.add_systems(OnExit(AppState::LevelStart), remove_ready);
-        app.add_systems(FixedUpdate, map_wrap.after(GameLoop::Movement)
-                                             .before(GameLoop::Collisions)
-                                             .run_if(in_state(AppState::MainGame)));
+        app.add_systems(
+            FixedUpdate,
+            map_wrap
+                .after(GameLoop::Movement)
+                .before(GameLoop::Collisions)
+                .run_if(in_state(AppState::MainGame)),
+        );
         app.add_systems(Update, update_entities_location);
 
         app.add_systems(Update, flash_map.run_if(in_state(AppState::LevelComplete)));
@@ -30,35 +34,44 @@ impl Plugin for MapRenderPlugin {
     }
 }
 
-fn render_map(mut commands: Commands,
-              asset_server: Res<AssetServer>,
-              mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
+fn render_map(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+) {
     let map_texture = asset_server.load("map.png");
-    let texture_atlas = TextureAtlas::from_grid(map_texture, Vec2::new(226.0, 248.0), 28, 36, None, None);
+    let texture_atlas =
+        TextureAtlas::from_grid(map_texture, Vec2::new(226.0, 248.0), 28, 36, None, None);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
-    
-    commands.spawn((MapComponent,
-                    SpriteSheetBundle{
-                        texture_atlas: texture_atlas_handle,
-                        sprite: TextureAtlasSprite::new(0),
-                        transform: Transform::from_xyz(0.0, 0.0, Layers::Map.as_f32()),
-                        ..default()
-                    }));
 
-    commands.spawn((MapComponent,
-                    SpriteBundle {
-                        texture: asset_server.load("map_outer_mask.png"),
-                        transform: Transform::from_xyz(0.0, 0.0, Layers::Mask.as_f32()),
-                        ..default()
-                    }));
+    commands.spawn((
+        MapComponent,
+        SpriteSheetBundle {
+            texture_atlas: texture_atlas_handle,
+            sprite: TextureAtlasSprite::new(0),
+            transform: Transform::from_xyz(0.0, 0.0, Layers::Map.as_f32()),
+            ..default()
+        },
+    ));
 
-    commands.spawn((ReadySign,
-                    Location::new(13.5, 13.0),
-                    SpriteBundle {
-                        texture: asset_server.load("ready.png"),
-                        transform: Transform::from_xyz(0.0, 0.0, Layers::Map.as_f32() + 1.0),
-                        ..default()
-                    }));
+    commands.spawn((
+        MapComponent,
+        SpriteBundle {
+            texture: asset_server.load("map_outer_mask.png"),
+            transform: Transform::from_xyz(0.0, 0.0, Layers::Mask.as_f32()),
+            ..default()
+        },
+    ));
+
+    commands.spawn((
+        ReadySign,
+        Location::new(13.5, 13.0),
+        SpriteBundle {
+            texture: asset_server.load("ready.png"),
+            transform: Transform::from_xyz(0.0, 0.0, Layers::Map.as_f32() + 1.0),
+            ..default()
+        },
+    ));
 }
 
 fn remove_ready(mut commands: Commands, query: Query<Entity, With<ReadySign>>) {
@@ -92,8 +105,10 @@ fn map_wrap(mut query: Query<&mut Location>, map: Res<Map>) {
     });
 }
 
-fn flash_map(timer: Res<StateTimer>,
-             mut query: Query<&mut TextureAtlasSprite, With<MapComponent>>) {
+fn flash_map(
+    timer: Res<StateTimer>,
+    mut query: Query<&mut TextureAtlasSprite, With<MapComponent>>,
+) {
     if timer.0.elapsed_secs() >= 3.0 {
         let first_half_of_second = timer.0.elapsed().as_secs_f32().fract() < 0.5;
 
@@ -107,4 +122,3 @@ fn despawn(mut commands: Commands, query: Query<Entity, With<MapComponent>>) {
         commands.entity(entity).despawn();
     }
 }
-

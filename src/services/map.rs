@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
+use derive_more::{Add, AddAssign, Deref, DerefMut, Mul, Sub};
 use strum::{EnumIter, IntoEnumIterator};
-use derive_more::{ Add, Mul, AddAssign, Deref, DerefMut, Sub };
 
 enum Tile {
     Wall,
@@ -10,9 +10,7 @@ enum Tile {
     GhostHouseDoor,
 }
 
-#[derive(Component)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[derive(Add, AddAssign, Sub, Mul, Deref, DerefMut)]
+#[derive(Component, Copy, Clone, Debug, PartialEq, Add, AddAssign, Sub, Mul, Deref, DerefMut)]
 pub struct Location {
     vec: Vec2,
 }
@@ -50,8 +48,7 @@ impl Location {
     }
 }
 
-#[derive(Component, EnumIter)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Component, EnumIter, Copy, Clone, Debug, PartialEq)]
 pub enum Direction {
     Left,
     Up,
@@ -101,16 +98,19 @@ impl Map {
     pub fn parse(map_text: &str) -> Self {
         let height = map_text.lines().next().unwrap().len();
         let width = map_text.lines().count();
-        let map = map_text.lines().flat_map(|line| {
-            assert_eq!(line.len(), height, "All lines must have the same length");
-            line.chars().map(|c| match c {
-                'W' => Tile::Wall,
-                ' ' => Tile::Empty,
-                'H' => Tile::GhostHouse,
-                'D' => Tile::GhostHouseDoor,
-                _ => panic!("Invalid character in map"),
+        let map = map_text
+            .lines()
+            .flat_map(|line| {
+                assert_eq!(line.len(), height, "All lines must have the same length");
+                line.chars().map(|c| match c {
+                    'W' => Tile::Wall,
+                    ' ' => Tile::Empty,
+                    'H' => Tile::GhostHouse,
+                    'D' => Tile::GhostHouseDoor,
+                    _ => panic!("Invalid character in map"),
+                })
             })
-        }).collect();
+            .collect();
         Self { width, height, map }
     }
 
@@ -121,10 +121,12 @@ impl Map {
             return vec![Direction::Up, Direction::Down];
         }
 
-        Direction::iter().filter(|direction| {
-            let tile_to_check = location.next_tile(*direction);
-            return !self.is_blocked(tile_to_check);
-        }).collect()
+        Direction::iter()
+            .filter(|direction| {
+                let tile_to_check = location.next_tile(*direction);
+                return !self.is_blocked(tile_to_check);
+            })
+            .collect()
     }
 
     pub fn is_blocked(&self, location: Location) -> bool {
@@ -166,11 +168,12 @@ impl Map {
     }
 
     // for debugging
-    pub fn print_7x7(&self, current_tile: Location, next_tile: Location ) {
+    pub fn print_7x7(&self, current_tile: Location, next_tile: Location) {
         let possible_directions = self.possible_directions(next_tile);
-        let possible_locations = possible_directions.iter().map(|direction| {
-            next_tile.next_tile(*direction)
-        }).collect::<Vec<_>>();
+        let possible_locations = possible_directions
+            .iter()
+            .map(|direction| next_tile.next_tile(*direction))
+            .collect::<Vec<_>>();
 
         let start_x = current_tile.x as i32 - 3;
         let start_y = current_tile.y as i32 - 3;
@@ -199,4 +202,3 @@ impl Map {
         println!("{}", result);
     }
 }
-                

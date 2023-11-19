@@ -6,4 +6,3 @@ pub enum GameLoop {
     Movement,
     Collisions,
 }
-

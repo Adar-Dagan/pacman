@@ -5,7 +5,7 @@ pub struct CharacterSpeed {
     speed: f32,
     advancement_counter: f32,
     missed_counter: f32,
-    pub should_miss: bool
+    pub should_miss: bool,
 }
 
 impl CharacterSpeed {
@@ -15,7 +15,7 @@ impl CharacterSpeed {
             speed,
             advancement_counter: 0.0,
             missed_counter: 0.0,
-            should_miss: false
+            should_miss: false,
         }
     }
 

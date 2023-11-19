@@ -114,7 +114,9 @@ impl Levels {
             2..=4 => [7.0, 20.0, 7.0, 20.0, 5.0, 1033.0, 1.0 / 60.0],
             5.. => [5.0, 20.0, 5.0, 20.0, 5.0, 1037.0, 1.0 / 60.0],
             _ => unreachable!(),
-        }.get(index).copied()
+        }
+        .get(index)
+        .copied()
     }
 
     pub fn inky_home_exit_dots(&self) -> usize {
