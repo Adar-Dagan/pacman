@@ -6,7 +6,9 @@ use strum::IntoEnumIterator;
 
 use crate::common::app_state::AppState;
 use crate::common::layers::Layers;
+use crate::common::levels::Levels;
 use crate::common::sets::GameLoop;
+use crate::ghosts::FriteTimer;
 use crate::services::map::{Direction, Map, Location};
 use crate::common::events::{PlayerAt, CollisionPauseTimer, PelletEaten};
 use crate::services::speed::CharacterSpeed;
@@ -44,7 +46,8 @@ impl Plugin for PlayerPlugin {
 
 fn spawn_characters(mut commands: Commands,
                     asset_server: Res<AssetServer>,
-                    mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
+                    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+                    level: Res<Levels>) {
     let texture_handle = asset_server.load("pacman.png");
     let texture_atlas =
         TextureAtlas::from_grid(texture_handle, Vec2::new(15.0, 15.0), 3, 1, None, None);
@@ -55,7 +58,7 @@ fn spawn_characters(mut commands: Commands,
                 location: Location::new(13.5, 7.0),
                 player: Player { is_blocked: false },
                 direction: Direction::Left,
-                speed: CharacterSpeed::new(0.8),
+                speed: CharacterSpeed::new(level.player_speed()),
             },
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
@@ -99,7 +102,9 @@ fn move_player(mut query: Query<(&mut Location, &Direction, &mut CharacterSpeed,
                pause_timer: Res<CollisionPauseTimer>,
                time: Res<Time>,
                mut pellets_eaten_events: EventReader<PelletEaten>,
-               next_game_state: Res<NextState<AppState>>) {
+               next_game_state: Res<NextState<AppState>>,
+               levels: Res<Levels>,
+               frite_timer: Res<FriteTimer>) {
     const PELLET_STOP_TIME: f32 = 1.0 / 60.0;
     for event in pellets_eaten_events.read() {
         pellets_eaten_timer.0.set_duration(Duration::from_secs_f32(PELLET_STOP_TIME * if event.power { 3.0 } else { 1.0 }));
@@ -111,6 +116,12 @@ fn move_player(mut query: Query<(&mut Location, &Direction, &mut CharacterSpeed,
     }
 
     let (mut location, direction, mut speed, mut player) = query.single_mut();
+
+    if frite_timer.0.finished() {
+        speed.set_speed(levels.player_speed());
+    } else {
+        speed.set_speed(levels.player_frite_speed());
+    }
 
     speed.tick();
     if speed.should_miss || next_game_state.0.is_some() {

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-use common::{app_state::{AppState, StateTimer}, events::{PelletEaten, PlayerAt, Collision, CollisionPauseTimer}, sets::GameLoop};
+use common::{app_state::{AppState, StateTimer}, events::{PelletEaten, PlayerAt, Collision, CollisionPauseTimer}, sets::GameLoop, levels::Levels};
 use ghosts::GhostMode;
 
 mod common;
@@ -31,10 +31,12 @@ fn main() {
         .add_state::<AppState>()
         .insert_resource(StateTimer(Timer::from_seconds(5.0, TimerMode::Once)))
         .insert_resource(CollisionPauseTimer(Timer::from_seconds(0.0, TimerMode::Once)))
+        .insert_resource(Levels::default())
         .add_systems(Startup, (camera_setup, frame_rate_limiter))
         .add_systems(Update, state_transition)
         .add_systems(PostUpdate, state_transition_timer)
         .add_systems(FixedUpdate, advance_global_timer.before(GameLoop::Planning))
+        .add_systems(OnEnter(AppState::LevelStart), advance_level)
         .configure_sets(FixedUpdate, (
             common::sets::GameLoop::Planning,
             common::sets::GameLoop::Movement,
@@ -94,4 +96,8 @@ fn advance_global_timer(mut pause_timer: ResMut<CollisionPauseTimer>,
             pause_timer.0.reset();
         }
     }
+}
+
+fn advance_level(mut levels: ResMut<Levels>) {
+    levels.current += 1;
 }

@@ -6,6 +6,7 @@ use strum::{ EnumIter, IntoEnumIterator };
 use crate::common::app_state::{AppState, StateTimer};
 use crate::common::events::{PelletEaten, Collision, CollisionPauseTimer};
 use crate::common::layers::Layers;
+use crate::common::levels::Levels;
 use crate::common::sets::GameLoop;
 use crate::pellets::TotalPellets;
 use crate::player::Player;
@@ -66,7 +67,7 @@ pub enum GhostMode {
 }
 
 #[derive(Resource)]
-struct FriteTimer(Timer);
+pub struct FriteTimer(pub Timer);
 
 #[derive(Resource)]
 struct GlobalGhostModeTimer{
@@ -214,6 +215,7 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
                      mut collision_events: EventReader<Collision>,
                      mut frite_timer: ResMut<FriteTimer>,
                      pause_timer: Res<CollisionPauseTimer>,
+                     levels: Res<Levels>,
                      time: Res<Time>) {
     ghost_pellet_eaten_counter.counter += pellet_eaten_events.len();
     let power_pellet_eaten = pellet_eaten_events.read().find(|event| event.power).is_some();
@@ -221,7 +223,7 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
     let frite_timer_finished = frite_timer.0.tick(time.delta()).just_finished();
     if power_pellet_eaten {
         frite_timer.0.reset();
-        frite_timer.0.set_duration(Duration::from_secs(6));
+        frite_timer.0.set_duration(Duration::from_secs(levels.frite_duration()));
     }
 
     let collided_ghosts = collision_events.read().map(|event| event.ghost).collect::<Vec<_>>();
@@ -310,7 +312,8 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
 fn update_ghost_speed(mut query: Query<(&mut CharacterSpeed, &GhostMode, &Location, &Ghost)>,
                       pellets_eaten_counter: Res<GhostPelletEatenCounter>,
                       total_pellets: Res<TotalPellets>,
-                      pause_timer: Res<CollisionPauseTimer>) {
+                      pause_timer: Res<CollisionPauseTimer>,
+                      levels: Res<Levels>) {
     query.par_iter_mut().for_each(|(mut speed, mode, location, ghost)| {
         let in_tunnel = location.y == 16.0 && (location.x <= 5.0 || location.x >= 22.0);
         
@@ -319,16 +322,18 @@ fn update_ghost_speed(mut query: Query<(&mut CharacterSpeed, &GhostMode, &Locati
         } else if !pause_timer.0.finished() {
             0.0
         } else if in_tunnel {
-            0.4
+            levels.ghost_tunnel_speed()
         } else {
             let remaining_pellets = total_pellets.0 - pellets_eaten_counter.counter;
             match *mode {
-                GhostMode::Frightened => 0.5,
+                GhostMode::Frightened => levels.ghost_frite_speed(),
                 GhostMode::Home(_) | GhostMode::HomeExit(_) => 0.5,
                 // Elroy!!!!!
-                _ if matches!(*ghost, Ghost::Blinky) && remaining_pellets <= 10 => 0.85,
-                _ if matches!(*ghost, Ghost::Blinky) && remaining_pellets <= 20 => 0.8,
-                _ => 0.75,
+                _ if matches!(*ghost, Ghost::Blinky) && 
+                    remaining_pellets <= levels.elroy_2_dots() => levels.elroy_2_speed(),
+                _ if matches!(*ghost, Ghost::Blinky) &&
+                    remaining_pellets <= levels.elroy_1_dots() => levels.elroy_1_speed(),
+                _ => levels.ghost_normal_speed(),
             }
         };
 
@@ -554,7 +559,8 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
                                       &mut Visibility,
                                       &GhostSprite),
                                       Without<Ghost>>,
-              frite_timer: Res<FriteTimer>) {
+              frite_timer: Res<FriteTimer>,
+              levels: Res<Levels>) {
     for (directions, location, mode, mut visibility, children) in query.iter_mut() {
 
         if let GhostMode::DeadPause = *mode {
@@ -602,9 +608,9 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
 
                         let remaining_time = frite_timer.0.remaining_secs();
 
-                        const FLASHING_TIMING: f32 = 1.0 / 2.0;
-                        const START_FLASHING_TIME: f32 = FLASHING_TIMING * 5.0;
-                        let flashing = if remaining_time > START_FLASHING_TIME {
+                        const FLASHING_TIMING: f32 = 1.0 / 4.0;
+                        let start_flashing_time: f32 = FLASHING_TIMING * levels.number_of_frite_flashes();
+                        let flashing = if remaining_time > start_flashing_time {
                             false
                         } else {
                             let cycle = (remaining_time % FLASHING_TIMING) / FLASHING_TIMING;
