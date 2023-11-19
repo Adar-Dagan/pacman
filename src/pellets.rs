@@ -7,12 +7,12 @@ use crate::common::sets::GameLoop::Collisions;
 use crate::services::map::Location;
 
 #[derive(Component, Copy, Clone)]
-pub enum PelletType {
+enum PelletType {
     Regular,
     Power,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct TotalPellets(pub usize);
 
 #[derive(Resource)]
@@ -25,11 +25,12 @@ impl Plugin for PelletsPlugin {
         app.add_systems(OnEnter(AppState::LevelStart), spawn_pellets);
         app.add_systems(FixedUpdate, remove_pellets.in_set(Collisions));
         app.add_systems(Update, flash_power_pellets);
+
         app.insert_resource(PowerPelletFlashTimer(Timer::from_seconds(
             0.5,
             TimerMode::Repeating,
         )));
-        app.insert_resource(TotalPellets(0));
+        app.insert_resource(TotalPellets::default());
     }
 }
 
@@ -41,7 +42,7 @@ fn spawn_pellets(
     const PELLETS_TEXT: &str = include_str!("pellets");
     const PARSING_ERROR: &str = "Error parsing pellets file";
 
-    let pellets_iter = PELLETS_TEXT
+    let pellets_parser = PELLETS_TEXT
         .lines()
         .map(|line| {
             let (coordinates_text, type_text) = line.split_once(' ')?;
@@ -59,9 +60,7 @@ fn spawn_pellets(
         })
         .map(|option| option.expect(PARSING_ERROR));
 
-    total_pellets.0 = 0;
-    for (x, y, pellet_type) in pellets_iter {
-        total_pellets.0 += 1;
+    for (x, y, pellet_type) in pellets_parser {
         commands.spawn((
             pellet_type,
             Location::new(x, y),
@@ -75,6 +74,8 @@ fn spawn_pellets(
             },
         ));
     }
+
+    total_pellets.0 = PELLETS_TEXT.lines().count();
 }
 
 fn remove_pellets(
@@ -113,13 +114,15 @@ fn flash_power_pellets(
         return;
     }
 
-    for (pellet_type, mut visibility) in query.iter_mut() {
-        if matches!(pellet_type, PelletType::Power) {
-            *visibility = match *visibility {
-                Visibility::Inherited => Visibility::Hidden,
-                Visibility::Hidden => Visibility::Inherited,
-                Visibility::Visible => unreachable!(),
-            };
-        }
-    }
+    query
+        .par_iter_mut()
+        .for_each(|(pellet_type, mut visibility)| {
+            if matches!(pellet_type, PelletType::Power) {
+                *visibility = match *visibility {
+                    Visibility::Inherited => Visibility::Hidden,
+                    Visibility::Hidden => Visibility::Inherited,
+                    Visibility::Visible => unreachable!(),
+                };
+            }
+        });
 }
