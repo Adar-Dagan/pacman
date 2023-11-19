@@ -70,6 +70,9 @@ pub enum GhostMode {
 pub struct FriteTimer(pub Timer);
 
 #[derive(Resource)]
+struct ExitHomeTimer(Timer);
+
+#[derive(Resource)]
 struct GlobalGhostModeTimer{
     timer: Timer,
     duration_index: usize,
@@ -99,6 +102,7 @@ impl Plugin for GhostPlugin {
         });
         app.insert_resource(FriteTimer(Timer::from_seconds(0.0, TimerMode::Once)));
         app.insert_resource(GhostPelletEatenCounter { counter: 0, life_lost: false });
+        app.insert_resource(ExitHomeTimer(Timer::from_seconds(0.0, TimerMode::Repeating)));
 
         app.add_systems(OnEnter(AppState::LevelStart), spawn_ghosts);
         app.add_systems(OnEnter(AppState::MainGame), init_resources);
@@ -184,6 +188,7 @@ fn spawn_ghost(ghost: Ghost,
 fn init_resources(mut global_ghost_mode: ResMut<GhostMode>,
                   mut global_mode_timer: ResMut<GlobalGhostModeTimer>,
                   mut pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
+                  mut exit_home_timer: ResMut<ExitHomeTimer>,
                   levels: Res<Levels>) {
     *global_ghost_mode = GhostMode::Scatter;
 
@@ -193,15 +198,21 @@ fn init_resources(mut global_ghost_mode: ResMut<GhostMode>,
 
     pellet_eaten_counter.counter = 0;
     pellet_eaten_counter.life_lost = false;
+
+    exit_home_timer.0.set_duration(Duration::from_secs(levels.ghost_exit_home_duration()));
+    exit_home_timer.0.reset();
 }
 
 fn timer_pause(pause_timer: Res<CollisionPauseTimer>,
                mut frite_timer: ResMut<FriteTimer>,
+               mut exit_home_timer: ResMut<ExitHomeTimer>,
                mut global_mode_timer: ResMut<GlobalGhostModeTimer>) {
     if pause_timer.0.finished() {
         frite_timer.0.unpause();
+        exit_home_timer.0.unpause();
     } else {
         frite_timer.0.pause();
+        exit_home_timer.0.pause();
     }
 
     if pause_timer.0.finished() && frite_timer.0.finished() {
@@ -217,10 +228,25 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
                      mut ghost_pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
                      mut collision_events: EventReader<Collision>,
                      mut frite_timer: ResMut<FriteTimer>,
+                     mut exit_home_timer: ResMut<ExitHomeTimer>,
                      pause_timer: Res<CollisionPauseTimer>,
                      levels: Res<Levels>,
                      time: Res<Time>) {
+    let inky_is_in_home = query.iter()
+                               .find(|(_, _, _, ghost)| **ghost == Ghost::Inky)
+                               .map(|(mode, _, _, _)| matches!(*mode, GhostMode::Home(_) | GhostMode::HomeExit(_)))
+                               .expect("Inky not found");
+
+    if !pellet_eaten_events.is_empty() {
+        exit_home_timer.0.reset();
+    }
+    let exit_home_timer_finished = exit_home_timer.0.tick(time.delta()).just_finished();
+
     ghost_pellet_eaten_counter.counter += pellet_eaten_events.len();
+    if exit_home_timer_finished {
+        ghost_pellet_eaten_counter.counter = 0;
+    }
+
     let power_pellet_eaten = pellet_eaten_events.read().find(|event| event.power).is_some();
 
     let frite_timer_finished = frite_timer.0.tick(time.delta()).just_finished();
@@ -231,7 +257,7 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
 
     let collided_ghosts = collision_events.read().map(|event| event.ghost).collect::<Vec<_>>();
 
-    query.par_iter_mut().for_each(|(mut mode, mut directions, location, ghost)| {
+    for (mut mode, mut directions, location, ghost) in query.iter_mut() {
         if power_pellet_eaten {
             let prev_mode = *mode;
             *mode = match *mode {
@@ -278,11 +304,18 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
                 }
 
                 match *ghost {
-                    Ghost::Inky if ghost_pellet_eaten_counter.counter >= levels.inky_home_exit_dots() => {
-                        *mode = GhostMode::HomeExit(frightened);
+                    Ghost::Inky => {
+                        if ghost_pellet_eaten_counter.counter >= levels.inky_home_exit_dots() ||
+                            exit_home_timer_finished {
+                            *mode = GhostMode::HomeExit(frightened);
+                            ghost_pellet_eaten_counter.counter = 0;
+                        }
                     },
-                    Ghost::Clyde if ghost_pellet_eaten_counter.counter >= levels.clyde_home_exit_dots() => {
-                        *mode = GhostMode::HomeExit(frightened);
+                    Ghost::Clyde => {
+                        if ghost_pellet_eaten_counter.counter >= levels.clyde_home_exit_dots() ||
+                            (exit_home_timer_finished && !inky_is_in_home) {
+                            *mode = GhostMode::HomeExit(frightened);
+                        }
                     },
                     _ => (),
                 }
@@ -309,7 +342,7 @@ fn update_ghost_mode(mut query: Query<(&mut GhostMode, &mut GhostDirections, &Lo
             },
             _ => (),
         }
-    });
+    }
 }
 
 fn update_ghost_speed(mut query: Query<(&mut CharacterSpeed, &GhostMode, &Location, &Ghost)>,

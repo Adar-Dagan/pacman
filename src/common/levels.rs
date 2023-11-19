@@ -126,9 +126,16 @@ impl Levels {
 
     pub fn clyde_home_exit_dots(&self) -> usize {
         match self.current {
-            1 => 90,
+            1 => 60,
             2 => 50,
             _ => 0,
+        }
+    }
+
+    pub fn ghost_exit_home_duration(&self) -> u64 {
+        match self.current {
+            1..=4 => 4,
+            _ => 3,
         }
     }
 }
