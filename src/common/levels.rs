@@ -107,4 +107,13 @@ impl Levels {
             _ => 0.0,
         }
     }
+
+    pub fn ghost_switch_global_mode(&self, index: usize) -> Option<f32> {
+        match self.current {
+            1 => [7.0, 20.0, 7.0, 20.0, 5.0, 20.0, 5.0],
+            2..=4 => [7.0, 20.0, 7.0, 20.0, 5.0, 1033.0, 1.0 / 60.0],
+            5.. => [5.0, 20.0, 5.0, 20.0, 5.0, 1037.0, 1.0 / 60.0],
+            _ => unreachable!(),
+        }.get(index).copied()
+    }
 }

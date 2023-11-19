@@ -88,15 +88,13 @@ struct GhostPelletEatenCounter {
     life_lost: bool
 }
 
-const CHANGE_DURATIONS: [u64; 7] = [7, 20, 7, 20, 5, 20, 5];
-
 pub struct GhostPlugin;
 
 impl Plugin for GhostPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(GhostMode::Scatter);
         app.insert_resource(GlobalGhostModeTimer {
-            timer: Timer::from_seconds(CHANGE_DURATIONS[0] as f32, TimerMode::Once),
+            timer: Timer::from_seconds(0.0, TimerMode::Once),
             duration_index: 0,
         });
         app.insert_resource(FriteTimer(Timer::from_seconds(0.0, TimerMode::Once)));
@@ -185,10 +183,11 @@ fn spawn_ghost(ghost: Ghost,
 
 fn init_resources(mut global_ghost_mode: ResMut<GhostMode>,
                   mut global_mode_timer: ResMut<GlobalGhostModeTimer>,
-                  mut pellet_eaten_counter: ResMut<GhostPelletEatenCounter>) {
+                  mut pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
+                  levels: Res<Levels>) {
     *global_ghost_mode = GhostMode::Scatter;
 
-    global_mode_timer.timer.set_duration(Duration::from_secs(CHANGE_DURATIONS[0]));
+    global_mode_timer.timer.set_duration(Duration::from_secs_f32(levels.ghost_switch_global_mode(0).unwrap()));
     global_mode_timer.timer.reset();
     global_mode_timer.duration_index = 0;
 
@@ -629,7 +628,8 @@ fn draw_ghosts(mut query: Query<(&GhostDirections,
 
 fn update_global_ghost_mode(mut global_ghost_mode: ResMut<GhostMode>,
                        mut mode: ResMut<GlobalGhostModeTimer>,
-                       time: Res<Time>) {
+                       time: Res<Time>,
+                       levels: Res<Levels>) {
     if !mode.timer.tick(time.delta()).just_finished() {
         return;
     }
@@ -641,8 +641,8 @@ fn update_global_ghost_mode(mut global_ghost_mode: ResMut<GhostMode>,
     };
 
     mode.duration_index += 1;
-    if let Some(duration) = CHANGE_DURATIONS.get(mode.duration_index) {
-        mode.timer.set_duration(Duration::from_secs(*duration));
+    if let Some(duration) = levels.ghost_switch_global_mode(mode.duration_index) {
+        mode.timer.set_duration(Duration::from_secs_f32(duration));
         mode.timer.reset();
     }
 }
