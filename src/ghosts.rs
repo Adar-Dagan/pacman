@@ -404,16 +404,18 @@ fn plan_ghosts(mut query: Query<(&Location, &mut GhostDirections, &Ghost, &Ghost
         let next_tile = location.next_tile(directions.current);
         let in_special_zone = 10.0 <= location.x && location.x <= 17.0 && (location.y == 7.0 || location.y == 19.0);
 
-        if GHOST_DEBUG {
-            println!("Directions: {:?}" , directions);
-            map.print_7x7(location.get_tile(directions.current), next_tile);
-        }
-
         let planned_direction = ghost_path_finder(next_tile,
                                                   target_tile,
                                                   map,
                                                   directions.current,
                                                   in_special_zone);
+
+        if GHOST_DEBUG || planned_direction.is_none() {
+            println!("Directions: {:?}" , directions);
+            map.print_7x7(location.get_tile(directions.current), next_tile);
+        }
+
+        let planned_direction = planned_direction.unwrap();
 
         directions.set_plan(planned_direction);
     });
@@ -456,7 +458,7 @@ fn ghost_path_finder(next_tile: Location,
                      target_tile: Option<Location>,
                      map: &Map,
                      current_direction: Direction,
-                     is_in_special_zone: bool) -> Direction {
+                     is_in_special_zone: bool) -> Option<Direction> {
     let mut possible_directions = map.possible_directions(next_tile);
 
     possible_directions.retain(|direction| {
@@ -478,10 +480,10 @@ fn ghost_path_finder(next_tile: Location,
             distance1.partial_cmp(&distance2).unwrap()
         });
 
-        possible_directions[0]
+        possible_directions.get(0).copied()
     } else {
         let direction_index = fastrand::usize(0..possible_directions.len());
-        possible_directions[direction_index]
+        possible_directions.get(direction_index).copied()
     }
 }
 

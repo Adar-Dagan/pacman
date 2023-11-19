@@ -100,4 +100,5 @@ fn advance_global_timer(mut pause_timer: ResMut<CollisionPauseTimer>,
 
 fn advance_level(mut levels: ResMut<Levels>) {
     levels.current += 1;
+    println!("Level: {}", levels.current);
 }
