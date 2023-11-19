@@ -200,9 +200,13 @@ fn timer_pause(pause_timer: Res<CollisionPauseTimer>,
                mut global_mode_timer: ResMut<GlobalGhostModeTimer>) {
     if pause_timer.0.finished() {
         frite_timer.0.unpause();
-        global_mode_timer.timer.unpause();
     } else {
         frite_timer.0.pause();
+    }
+
+    if pause_timer.0.finished() && frite_timer.0.finished() {
+        global_mode_timer.timer.unpause();
+    } else {
         global_mode_timer.timer.pause();
     }
 }
