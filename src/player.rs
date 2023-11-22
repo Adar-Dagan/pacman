@@ -34,6 +34,7 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PelletEatenTimer(Timer::from_seconds(0.0, TimerMode::Once)));
+
         app.add_systems(OnEnter(AppState::LevelStart), spawn_characters);
         app.add_systems(
             FixedUpdate,
@@ -42,6 +43,7 @@ impl Plugin for PlayerPlugin {
                 move_player.in_set(GameLoop::Movement),
             ),
         );
+
         app.add_systems(
             Update,
             update_pacman_sprite.run_if(in_state(AppState::MainGame)),
@@ -80,11 +82,11 @@ fn spawn_characters(
 }
 
 fn update_player(
-    mut query: Query<(&Location, &mut Direction, &Player)>,
+    mut query: Query<(&mut Direction, &Location, &Player)>,
     map: Res<Map>,
     key: Res<Input<KeyCode>>,
 ) {
-    let (location, mut direction, player) = query.single_mut();
+    let (mut direction, location, player) = query.single_mut();
 
     let possible_directions = if player.is_blocked {
         Direction::iter().collect::<Vec<_>>()
@@ -109,15 +111,15 @@ fn update_player(
 
 fn move_player(
     mut query: Query<(&mut Location, &Direction, &mut CharacterSpeed, &mut Player)>,
-    map: Res<Map>,
     mut player_at_events: EventWriter<PlayerAt>,
+    mut pellets_eaten_events: EventReader<PelletEaten>,
+    map: Res<Map>,
+    levels: Res<Levels>,
     mut pellets_eaten_timer: ResMut<PelletEatenTimer>,
+    frite_timer: Res<FriteTimer>,
     pause_timer: Res<CollisionPauseTimer>,
     time: Res<Time>,
-    mut pellets_eaten_events: EventReader<PelletEaten>,
     next_game_state: Res<NextState<AppState>>,
-    levels: Res<Levels>,
-    frite_timer: Res<FriteTimer>,
 ) {
     const PELLET_STOP_TIME: f32 = 1.0 / 60.0;
     for event in pellets_eaten_events.read() {

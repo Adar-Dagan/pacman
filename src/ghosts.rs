@@ -15,6 +15,44 @@ use crate::services::speed::CharacterSpeed;
 
 const GHOST_DEBUG: bool = false;
 
+#[derive(Resource)]
+pub struct FriteTimer(pub Timer);
+
+#[derive(Resource, Default)]
+struct ExitHomeTimer(Timer);
+
+#[derive(Resource, Default)]
+struct GlobalGhostModeTimer {
+    timer: Timer,
+    duration_index: usize,
+}
+
+#[derive(Resource, Default)]
+struct GhostPelletEatenCounter {
+    counter: usize,
+    life_lost: bool,
+}
+
+#[derive(Resource, Component, Debug, Clone, Copy, PartialEq, Default)]
+pub enum GhostMode {
+    Home(bool),
+    HomeExit(bool),
+    Chase,
+    #[default]
+    Scatter,
+    Frightened,
+    DeadPause,
+    Dead,
+    DeadEnterHome,
+}
+
+#[derive(Component, EnumIter)]
+enum GhostSprite {
+    Body,
+    Eyes,
+    Frightened,
+}
+
 #[derive(Component, EnumIter, Clone, Copy, PartialEq)]
 pub enum Ghost {
     Blinky,
@@ -55,63 +93,28 @@ impl GhostDirections {
     }
 }
 
-#[derive(Resource, Component, Debug, Clone, Copy, PartialEq)]
-pub enum GhostMode {
-    Home(bool),
-    HomeExit(bool),
-    Chase,
-    Scatter,
-    Frightened,
-    DeadPause,
-    Dead(bool),
-}
-
-#[derive(Resource)]
-pub struct FriteTimer(pub Timer);
-
-#[derive(Resource)]
-struct ExitHomeTimer(Timer);
-
-#[derive(Resource)]
-struct GlobalGhostModeTimer {
-    timer: Timer,
-    duration_index: usize,
-}
-
-#[derive(Component, EnumIter)]
-enum GhostSprite {
-    Body,
-    Eyes,
-    Frightened,
-}
-
-#[derive(Resource)]
-struct GhostPelletEatenCounter {
-    counter: usize,
-    life_lost: bool,
+#[derive(Bundle)]
+struct GhostBundle {
+    location: Location,
+    ghost: Ghost,
+    directions: GhostDirections,
+    speed: CharacterSpeed,
+    mode: GhostMode,
 }
 
 pub struct GhostPlugin;
 
 impl Plugin for GhostPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(GhostMode::Scatter);
-        app.insert_resource(GlobalGhostModeTimer {
-            timer: Timer::from_seconds(0.0, TimerMode::Once),
-            duration_index: 0,
-        });
+        app.insert_resource(GhostMode::default());
+        app.insert_resource(GlobalGhostModeTimer::default());
         app.insert_resource(FriteTimer(Timer::from_seconds(0.0, TimerMode::Once)));
-        app.insert_resource(GhostPelletEatenCounter {
-            counter: 0,
-            life_lost: false,
-        });
-        app.insert_resource(ExitHomeTimer(Timer::from_seconds(
-            0.0,
-            TimerMode::Repeating,
-        )));
+        app.insert_resource(GhostPelletEatenCounter::default());
+        app.insert_resource(ExitHomeTimer::default());
 
         app.add_systems(OnEnter(AppState::LevelStart), spawn_ghosts);
         app.add_systems(OnEnter(AppState::MainGame), init_resources);
+
         app.add_systems(FixedUpdate, advance_global_timer.before(GameLoop::Planning));
         app.add_systems(
             FixedUpdate,
@@ -119,6 +122,7 @@ impl Plugin for GhostPlugin {
                 timer_pause,
                 update_global_ghost_mode,
                 update_ghost_mode,
+                detect_power_pellet,
                 update_ghost_speed,
                 ghost_tile_change_detection,
                 plan_ghosts,
@@ -137,7 +141,11 @@ impl Plugin for GhostPlugin {
             despawn_ghosts.run_if(in_state(AppState::LevelComplete)),
         );
 
-        app.add_systems(Update, draw_ghosts);
+        app.add_systems(
+            Update,
+            draw_ghosts
+                .run_if(in_state(AppState::MainGame).or_else(in_state(AppState::LevelStart))),
+        );
     }
 }
 
@@ -166,51 +174,53 @@ fn spawn_ghost(
     asset_server: &Res<AssetServer>,
     texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
 ) {
-    let (texture_path, location, directions) = match ghost {
+    let (texture_path, location, directions, mode) = match ghost {
         Ghost::Blinky => (
             "blinky_body.png",
             Location::new(13.5, 19.0),
             GhostDirections::new(Direction::Left),
+            GhostMode::HomeExit(false),
         ),
         Ghost::Pinky => (
             "pinky_body.png",
             Location::new(13.5, 16.0),
             GhostDirections::new(Direction::Down),
+            GhostMode::HomeExit(false),
         ),
         Ghost::Inky => (
             "inky_body.png",
             Location::new(11.5, 16.0),
             GhostDirections::new(Direction::Up),
+            GhostMode::Home(false),
         ),
         Ghost::Clyde => (
             "clyde_body.png",
             Location::new(15.5, 16.0),
             GhostDirections::new(Direction::Up),
+            GhostMode::Home(false),
         ),
     };
 
     commands
         .spawn((
-            location,
-            ghost,
-            directions,
-            CharacterSpeed::new(0.75),
-            if let Ghost::Blinky | Ghost::Pinky = ghost {
-                GhostMode::HomeExit(false)
-            } else {
-                GhostMode::Home(false)
+            GhostBundle {
+                location,
+                ghost,
+                directions,
+                speed: CharacterSpeed::new(0.75),
+                mode,
             },
             SpatialBundle::default(),
         ))
         .with_children(|parent| {
             for ghost_sprite in GhostSprite::iter() {
-                let (png, number_of_sprites, layer) = match ghost_sprite {
+                let (png_path, number_of_sprites, layer) = match ghost_sprite {
                     GhostSprite::Body => (texture_path, 2, Layers::Ghosts),
                     GhostSprite::Eyes => ("ghost_eyes.png", 4, Layers::GhostsEyes),
                     GhostSprite::Frightened => ("ghosts_frite.png", 4, Layers::Ghosts),
                 };
 
-                let texture_handle = asset_server.load(png);
+                let texture_handle = asset_server.load(png_path);
                 let texture_atlas = TextureAtlas::from_grid(
                     texture_handle,
                     Vec2::new(16.0, 16.0),
@@ -293,34 +303,17 @@ fn update_ghost_mode(
     levels: Res<Levels>,
     time: Res<Time>,
 ) {
-    let inky_is_in_home = GHOST_DEBUG
-        || query
-            .iter()
-            .find(|(_, _, _, ghost)| **ghost == Ghost::Inky)
-            .map(|(mode, _, _, _)| matches!(*mode, GhostMode::Home(_) | GhostMode::HomeExit(_)))
-            .expect("Inky not found");
+    let frite_timer_finished = frite_timer.0.tick(time.delta()).just_finished();
 
-    if !pellet_eaten_events.is_empty() {
+    ghost_pellet_eaten_counter.counter += pellet_eaten_events.len();
+
+    if pellet_eaten_events.read().count() != 0 {
         exit_home_timer.0.reset();
     }
     let exit_home_timer_finished = exit_home_timer.0.tick(time.delta()).just_finished();
 
-    ghost_pellet_eaten_counter.counter += pellet_eaten_events.len();
     if exit_home_timer_finished {
         ghost_pellet_eaten_counter.counter = 0;
-    }
-
-    let power_pellet_eaten = pellet_eaten_events
-        .read()
-        .find(|event| event.power)
-        .is_some();
-
-    let frite_timer_finished = frite_timer.0.tick(time.delta()).just_finished();
-    if power_pellet_eaten {
-        frite_timer.0.reset();
-        frite_timer
-            .0
-            .set_duration(Duration::from_secs(levels.frite_duration()));
     }
 
     let collided_ghosts = collision_events
@@ -328,23 +321,14 @@ fn update_ghost_mode(
         .map(|event| event.ghost)
         .collect::<Vec<_>>();
 
+    let inky_is_in_home = GHOST_DEBUG
+        || query
+            .iter()
+            .find(|(_, _, _, ghost)| **ghost == Ghost::Inky)
+            .map(|(mode, _, _, _)| matches!(*mode, GhostMode::Home(_) | GhostMode::HomeExit(_)))
+            .expect("Inky not found");
+
     for (mut mode, mut directions, location, ghost) in query.iter_mut() {
-        if power_pellet_eaten {
-            let prev_mode = *mode;
-            *mode = match *mode {
-                GhostMode::Home(_) => GhostMode::Home(true),
-                GhostMode::HomeExit(_) => GhostMode::HomeExit(true),
-                GhostMode::DeadPause => GhostMode::DeadPause,
-                GhostMode::Dead(enter_home) => GhostMode::Dead(enter_home),
-                _ => GhostMode::Frightened,
-            };
-
-            if prev_mode != *mode {
-                directions.reverse();
-            }
-            continue;
-        }
-
         match *mode {
             GhostMode::Frightened => {
                 if collided_ghosts.contains(ghost) {
@@ -355,15 +339,15 @@ fn update_ghost_mode(
             }
             GhostMode::DeadPause => {
                 if pause_timer.0.finished() {
-                    *mode = GhostMode::Dead(false);
+                    *mode = GhostMode::Dead;
                 }
             }
-            GhostMode::Dead(false) => {
+            GhostMode::Dead => {
                 if *location == Location::new(13.5, 19.0) {
-                    *mode = GhostMode::Dead(true);
+                    *mode = GhostMode::DeadEnterHome;
                 }
             }
-            GhostMode::Dead(true) => {
+            GhostMode::DeadEnterHome => {
                 if *location == Location::new(13.5, 16.0) {
                     *mode = GhostMode::HomeExit(false);
                 }
@@ -390,7 +374,7 @@ fn update_ghost_mode(
                             *mode = GhostMode::HomeExit(frightened);
                         }
                     }
-                    _ => (),
+                    _ => unreachable!(),
                 }
             }
             GhostMode::HomeExit(mut frightened) => {
@@ -418,6 +402,41 @@ fn update_ghost_mode(
     }
 }
 
+fn detect_power_pellet(
+    mut query: Query<(&mut GhostMode, &mut GhostDirections), With<Ghost>>,
+    mut frite_timer: ResMut<FriteTimer>,
+    mut pellet_eaten_events: EventReader<PelletEaten>,
+    levels: Res<Levels>,
+) {
+    let power_pellet_eaten = pellet_eaten_events
+        .read()
+        .find(|event| event.power)
+        .is_some();
+
+    if power_pellet_eaten {
+        frite_timer.0.reset();
+        frite_timer
+            .0
+            .set_duration(Duration::from_secs(levels.frite_duration()));
+
+        for (mut mode, mut directions) in query.iter_mut() {
+            let prev_mode = *mode;
+            *mode = match *mode {
+                GhostMode::Home(_) => GhostMode::Home(true),
+                GhostMode::HomeExit(_) => GhostMode::HomeExit(true),
+                GhostMode::DeadPause => GhostMode::DeadPause,
+                GhostMode::Dead => GhostMode::Dead,
+                GhostMode::DeadEnterHome => GhostMode::DeadEnterHome,
+                _ => GhostMode::Frightened,
+            };
+
+            if prev_mode != *mode {
+                directions.reverse();
+            }
+        }
+    }
+}
+
 fn update_ghost_speed(
     mut query: Query<(&mut CharacterSpeed, &GhostMode, &Location, &Ghost)>,
     pellets_eaten_counter: Res<GhostPelletEatenCounter>,
@@ -430,7 +449,7 @@ fn update_ghost_speed(
         .for_each(|(mut speed, mode, location, ghost)| {
             let in_tunnel = location.y == 16.0 && (location.x <= 5.0 || location.x >= 22.0);
 
-            let mode_speed = if let GhostMode::Dead(_) = *mode {
+            let mode_speed = if let GhostMode::Dead | GhostMode::DeadEnterHome = *mode {
                 1.05
             } else if !pause_timer.0.finished() {
                 0.0
@@ -498,7 +517,7 @@ fn plan_ghosts(
         .for_each(|(location, mut directions, ghost, mode)| {
             if let GhostMode::Home(_)
             | GhostMode::HomeExit(_)
-            | GhostMode::Dead(true)
+            | GhostMode::DeadEnterHome
             | GhostMode::DeadPause = *mode
             {
                 return;
@@ -524,10 +543,10 @@ fn plan_ghosts(
                     *player_direction,
                 )),
                 GhostMode::Frightened => None,
-                GhostMode::Dead(false) => Some(Location::new(13.5, 19.0)),
+                GhostMode::Dead => Some(Location::new(13.5, 19.0)),
                 GhostMode::Home(_)
                 | GhostMode::HomeExit(_)
-                | GhostMode::Dead(true)
+                | GhostMode::DeadEnterHome
                 | GhostMode::DeadPause => unreachable!(),
             };
 
@@ -620,7 +639,8 @@ fn ghost_path_finder(
 
         possible_directions.get(0).copied()
     } else {
-        let direction_index = fastrand::usize(0..possible_directions.len());
+        let range = 0..possible_directions.len();
+        let direction_index = fastrand::usize(range);
         possible_directions.get(direction_index).copied()
     }
 }
@@ -689,7 +709,7 @@ fn move_ghosts(
                         }
                     }
                 },
-                GhostMode::Dead(true) => directions.current = Direction::Down,
+                GhostMode::DeadEnterHome => directions.current = Direction::Down,
                 _ => (),
             }
 
@@ -714,6 +734,7 @@ fn draw_ghosts(
     >,
     frite_timer: Res<FriteTimer>,
     levels: Res<Levels>,
+    pause_timer: Res<CollisionPauseTimer>,
 ) {
     for (directions, location, mode, mut visibility, children) in query.iter_mut() {
         if let GhostMode::DeadPause = *mode {
@@ -726,20 +747,23 @@ fn draw_ghosts(
         for child in children.iter() {
             let (mut sprite, mut visibility, sprite_type) =
                 sprites_query.get_mut(*child).expect("Ghost without sprite");
+
             let is_frightened = matches!(
                 *mode,
                 GhostMode::Frightened | GhostMode::Home(true) | GhostMode::HomeExit(true)
             );
 
-            let change_variation = match *mode {
-                GhostMode::Home(_) | GhostMode::HomeExit(_) => location.y.fract() == 0.5,
-                _ => location.is_tile_center(),
-            };
+            let change_variation = pause_timer.0.finished()
+                && match *mode {
+                    GhostMode::Home(_) | GhostMode::HomeExit(_) => location.y.fract() == 0.5,
+                    _ => location.is_tile_center(),
+                };
             let variation = (sprite.index + if change_variation { 1 } else { 0 }) % 2;
 
             match sprite_type {
                 GhostSprite::Body => {
-                    if is_frightened || matches!(*mode, GhostMode::Dead(_)) {
+                    if is_frightened || matches!(*mode, GhostMode::Dead | GhostMode::DeadEnterHome)
+                    {
                         *visibility = Visibility::Hidden;
                     } else {
                         *visibility = Visibility::Inherited;
