@@ -459,7 +459,7 @@ fn update_ghost_speed(
                 let remaining_pellets = total_pellets.0 - pellets_eaten_counter.counter;
                 match *mode {
                     GhostMode::Frightened => levels.ghost_frite_speed(),
-                    GhostMode::Home(_) | GhostMode::HomeExit(_) => 0.5,
+                    GhostMode::Home(_) | GhostMode::HomeExit(_) => 0.4,
                     // Elroy!!!!!
                     _ if matches!(*ghost, Ghost::Blinky)
                         && remaining_pellets <= levels.elroy_2_dots() =>

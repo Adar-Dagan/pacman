@@ -23,8 +23,19 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .insert_resource(Time::<Fixed>::from_hz(MAX_MOVE_SPEED))
-        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        present_mode: bevy::window::PresentMode::AutoNoVsync,
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .add_plugins(bevy_framepace::FramepacePlugin)
+        .add_plugins(InGameTextPlugin)
         .insert_resource(StateTimer(Timer::from_seconds(2.0, TimerMode::Once)))
         .insert_resource(CollisionPauseTimer(Timer::from_seconds(
             0.0,
@@ -82,7 +93,7 @@ fn timed_state_transition(
     if let Some(next_state) = &next_state.0 {
         let secs_to_next_chage = match next_state {
             AppState::MainMenu => 3,
-            AppState::LevelStart => 3,
+            AppState::LevelStart => 13,
             AppState::MainGame => return,
             AppState::LevelComplete => 6,
             AppState::GameOver => return,

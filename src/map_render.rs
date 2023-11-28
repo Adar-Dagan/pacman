@@ -4,6 +4,7 @@ use crate::common::app_state::{AppState, StateTimer};
 use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::services::map::{Location, Map};
+use crate::services::text::InGameTextBundle;
 
 #[derive(Component)]
 struct MapComponent;
@@ -66,11 +67,7 @@ fn render_map(
     commands.spawn((
         ReadySign,
         Location::new(13.5, 13.0),
-        SpriteBundle {
-            texture: asset_server.load("ready.png"),
-            transform: Transform::from_xyz(0.0, 0.0, Layers::Map.as_f32() + 1.0),
-            ..default()
-        },
+        InGameTextBundle::new("READY!", Color::YELLOW),
     ));
 }
 

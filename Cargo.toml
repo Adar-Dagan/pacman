@@ -11,6 +11,7 @@ strum = { version = "0.25", features = ["derive"] }
 bevy_framepace = "0.14.0"
 derive_more = "0.99.17"
 fastrand = "2.0.1"
+text-to-png = "0.2.0"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
