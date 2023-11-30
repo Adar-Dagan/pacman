@@ -115,7 +115,7 @@ fn timed_state_transition(
 }
 
 fn advance_level(mut levels: ResMut<Levels>) {
-    levels.current += 1;
+    levels.next();
 }
 
 fn update_entities_location(mut query: Query<(&mut Transform, &Location), Changed<Location>>) {

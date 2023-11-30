@@ -2,10 +2,25 @@ use bevy::prelude::*;
 
 #[derive(Resource, Default)]
 pub struct Levels {
-    pub current: usize,
+    current: usize,
+    pub hard_mode: bool,
 }
 
 impl Levels {
+    pub fn next(&mut self) {
+        if !self.hard_mode {
+            self.current += 1;
+        } else {
+            self.current = match self.current {
+                0 => 2,
+                2 => 4,
+                5 => 7,
+                18 => 21,
+                _ => self.current + 1,
+            };
+        }
+    }
+
     pub fn player_speed(&self) -> f32 {
         match self.current {
             1 => 0.8,
