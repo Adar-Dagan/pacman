@@ -4,7 +4,7 @@ use crate::common::app_state::{AppState, StateTimer};
 use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::services::map::{Location, Map};
-use crate::services::text::InGameTextBundle;
+use crate::services::text::TextProvider;
 
 #[derive(Component)]
 struct MapComponent;
@@ -28,7 +28,6 @@ impl Plugin for MapRenderPlugin {
                 .before(GameLoop::Collisions)
                 .run_if(in_state(AppState::MainGame)),
         );
-        app.add_systems(Update, update_entities_location);
 
         app.add_systems(Update, flash_map.run_if(in_state(AppState::LevelComplete)));
         app.add_systems(OnExit(AppState::LevelComplete), despawn);
@@ -39,6 +38,7 @@ fn render_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    text_provider: Res<TextProvider>,
 ) {
     let map_texture = asset_server.load("map.png");
     let texture_atlas =
@@ -67,19 +67,16 @@ fn render_map(
     commands.spawn((
         ReadySign,
         Location::new(13.5, 13.0),
-        InGameTextBundle::new("READY!", Color::YELLOW),
+        SpriteBundle {
+            texture: text_provider.get_image("READY!", Color::YELLOW, &asset_server),
+            transform: Transform::from_xyz(0.0, 0.0, Layers::Map.as_f32() + 1.0),
+            ..default()
+        },
     ));
 }
 
 fn remove_ready(mut commands: Commands, query: Query<Entity, With<ReadySign>>) {
     commands.entity(query.single()).despawn();
-}
-
-fn update_entities_location(mut query: Query<(&mut Transform, &Location), Changed<Location>>) {
-    query.par_iter_mut().for_each(|(mut transform, location)| {
-        transform.translation.x = (location.x - 13.5) * 8.0;
-        transform.translation.y = (location.y - 15.0) * 8.0;
-    });
 }
 
 fn map_wrap(mut query: Query<&mut Location>, map: Res<Map>) {

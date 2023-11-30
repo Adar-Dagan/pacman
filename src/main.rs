@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, render::camera::ScalingMode};
 
 use common::{
     app_state::{AppState, StateTimer},
@@ -8,15 +8,16 @@ use common::{
     levels::Levels,
     sets::GameLoop,
 };
+use services::{map::Location, text::TextProviderPlugin};
 
 mod common;
 mod ghosts;
 mod map_render;
+mod menu;
 mod pellets;
 mod player;
 mod services;
 
-const SCALE: f32 = 2.0;
 const MAX_MOVE_SPEED: f64 = 78.0; // In pixel per second
 
 fn main() {
@@ -35,8 +36,12 @@ fn main() {
                 }),
         )
         .add_plugins(bevy_framepace::FramepacePlugin)
-        .add_plugins(InGameTextPlugin)
-        .insert_resource(StateTimer(Timer::from_seconds(2.0, TimerMode::Once)))
+        .add_plugins(TextProviderPlugin)
+        .insert_resource(StateTimer(
+            Timer::from_seconds(0.0, TimerMode::Once)
+                .tick(Duration::from_secs(1))
+                .clone(),
+        ))
         .insert_resource(CollisionPauseTimer(Timer::from_seconds(
             0.0,
             TimerMode::Once,
@@ -57,16 +62,20 @@ fn main() {
             pellets::PelletsPlugin,
             player::PlayerPlugin,
             ghosts::GhostPlugin,
+            menu::MenuPlugin,
         ))
         .add_systems(Startup, (camera_setup, frame_rate_limiter))
-        .add_systems(Update, timed_state_transition)
+        .add_systems(Update, (timed_state_transition, update_entities_location))
         .add_systems(OnEnter(AppState::LevelStart), advance_level)
         .run();
 }
 
 fn camera_setup(mut commands: Commands) {
     let mut camera = Camera2dBundle::default();
-    camera.projection.scale = 1.0 / SCALE;
+    camera.projection.scaling_mode = ScalingMode::AutoMin {
+        min_width: 226.0,
+        min_height: 248.0,
+    };
     commands.spawn(camera);
 }
 
@@ -92,8 +101,8 @@ fn timed_state_transition(
 
     if let Some(next_state) = &next_state.0 {
         let secs_to_next_chage = match next_state {
-            AppState::MainMenu => 3,
-            AppState::LevelStart => 13,
+            AppState::MainMenu => return,
+            AppState::LevelStart => 3,
             AppState::MainGame => return,
             AppState::LevelComplete => 6,
             AppState::GameOver => return,
@@ -107,4 +116,11 @@ fn timed_state_transition(
 
 fn advance_level(mut levels: ResMut<Levels>) {
     levels.current += 1;
+}
+
+fn update_entities_location(mut query: Query<(&mut Transform, &Location), Changed<Location>>) {
+    query.par_iter_mut().for_each(|(mut transform, location)| {
+        transform.translation.x = (location.x - 13.5) * 8.0;
+        transform.translation.y = (location.y - 15.0) * 8.0;
+    });
 }
