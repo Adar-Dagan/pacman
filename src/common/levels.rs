@@ -1,13 +1,18 @@
 use bevy::prelude::*;
 
+use crate::points::BonusSymbol;
+
 #[derive(Resource, Default)]
 pub struct Levels {
+    advancements: usize,
     current: usize,
     pub hard_mode: bool,
 }
 
 impl Levels {
     pub fn next(&mut self) {
+        self.advancements += 1;
+
         if !self.hard_mode {
             self.current += 1;
         } else {
@@ -153,6 +158,31 @@ impl Levels {
         match self.current {
             1..=4 => 4,
             _ => 3,
+        }
+    }
+
+    pub fn bonus_symbol(&self) -> BonusSymbol {
+        self.bonus_symbol_internal(self.advancements)
+    }
+
+    pub fn level_counter_bonus_symbols(&self) -> Vec<BonusSymbol> {
+        (1..=self.advancements)
+            .rev()
+            .take(7)
+            .map(|i| self.bonus_symbol_internal(i))
+            .collect()
+    }
+
+    fn bonus_symbol_internal(&self, index: usize) -> BonusSymbol {
+        match index {
+            1 => BonusSymbol::Cherries,
+            2 => BonusSymbol::Strawberry,
+            3..=4 => BonusSymbol::Peach,
+            5..=6 => BonusSymbol::Apple,
+            7..=8 => BonusSymbol::Grapes,
+            9..=10 => BonusSymbol::Galaxian,
+            11..=12 => BonusSymbol::Bell,
+            _ => BonusSymbol::Key,
         }
     }
 }

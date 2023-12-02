@@ -4,7 +4,7 @@ use bevy::{prelude::*, render::camera::ScalingMode};
 
 use common::{
     app_state::{AppState, StateTimer},
-    events::{Collision, CollisionPauseTimer, PelletEaten, PlayerAt},
+    events::{CollisionPauseTimer, GhostEaten, PelletEaten, PlayerAt},
     levels::Levels,
     sets::GameLoop,
 };
@@ -16,6 +16,7 @@ mod map_render;
 mod menu;
 mod pellets;
 mod player;
+mod points;
 mod services;
 
 const MAX_MOVE_SPEED: f64 = 78.0; // In pixel per second
@@ -49,7 +50,7 @@ fn main() {
         .insert_resource(Levels::default())
         .add_event::<PlayerAt>()
         .add_event::<PelletEaten>()
-        .add_event::<Collision>()
+        .add_event::<GhostEaten>()
         .add_state::<AppState>()
         .configure_sets(
             FixedUpdate,
@@ -63,9 +64,13 @@ fn main() {
             player::PlayerPlugin,
             ghosts::GhostPlugin,
             menu::MenuPlugin,
+            points::PointsPlugin,
         ))
         .add_systems(Startup, (camera_setup, frame_rate_limiter))
-        .add_systems(Update, (timed_state_transition, update_entities_location))
+        .add_systems(
+            PostUpdate,
+            (timed_state_transition, update_entities_location),
+        )
         .add_systems(OnEnter(AppState::LevelStart), advance_level)
         .run();
 }
@@ -74,7 +79,7 @@ fn camera_setup(mut commands: Commands) {
     let mut camera = Camera2dBundle::default();
     camera.projection.scaling_mode = ScalingMode::AutoMin {
         min_width: 226.0,
-        min_height: 248.0,
+        min_height: 288.0,
     };
     commands.spawn(camera);
 }
@@ -114,13 +119,13 @@ fn timed_state_transition(
     }
 }
 
-fn advance_level(mut levels: ResMut<Levels>) {
+pub fn advance_level(mut levels: ResMut<Levels>) {
     levels.next();
 }
 
 fn update_entities_location(mut query: Query<(&mut Transform, &Location), Changed<Location>>) {
     query.par_iter_mut().for_each(|(mut transform, location)| {
         transform.translation.x = (location.x - 13.5) * 8.0;
-        transform.translation.y = (location.y - 15.0) * 8.0;
+        transform.translation.y = (location.y - 15.5) * 8.0;
     });
 }

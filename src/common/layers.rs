@@ -2,10 +2,13 @@
 pub enum Layers {
     Map,
     Pellets,
+    BonusSymbols,
+    OnMapText,
     Player,
     Ghosts,
     GhostsEyes,
-    Mask = 900,
+    Mask,
+    Text,
 }
 
 impl Layers {

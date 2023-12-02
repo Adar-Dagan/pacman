@@ -14,9 +14,9 @@ pub struct PelletEaten {
 }
 
 #[derive(Event)]
-pub struct Collision {
+pub struct GhostEaten {
     pub ghost: Ghost,
-    pub mode: GhostMode,
+    pub eaten_ghosts: usize,
 }
 
 #[derive(Resource)]

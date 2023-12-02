@@ -61,7 +61,7 @@ impl Plugin for MenuPlugin {
 
 fn setup_menu(
     mut commands: Commands,
-    text_provider: Res<TextProvider>,
+    mut text_provider: ResMut<TextProvider>,
     asset_server: Res<AssetServer>,
     mut selected_option: ResMut<MenuState>,
 ) {
@@ -81,7 +81,6 @@ fn setup_menu(
 
     for (i, option) in Menu::iter().enumerate() {
         let option_name = option.to_string().replace("_", " ").to_uppercase();
-        println!("{}", option_name);
         commands
             .spawn((
                 Location::new(13.5, 17.0 - (2 * i) as f32),

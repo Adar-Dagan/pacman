@@ -12,6 +12,9 @@ struct MapComponent;
 #[derive(Component)]
 struct ReadySign;
 
+#[derive(Component)]
+pub struct NoMapWrap;
+
 pub struct MapRenderPlugin;
 
 impl Plugin for MapRenderPlugin {
@@ -38,8 +41,9 @@ fn render_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    text_provider: Res<TextProvider>,
+    mut text_provider: ResMut<TextProvider>,
 ) {
+    let map_center = Location::new(13.5, 15.0);
     let map_texture = asset_server.load("map.png");
     let texture_atlas =
         TextureAtlas::from_grid(map_texture, Vec2::new(226.0, 248.0), 28, 36, None, None);
@@ -47,6 +51,7 @@ fn render_map(
 
     commands.spawn((
         MapComponent,
+        map_center,
         SpriteSheetBundle {
             texture_atlas: texture_atlas_handle,
             sprite: TextureAtlasSprite::new(0),
@@ -57,6 +62,7 @@ fn render_map(
 
     commands.spawn((
         MapComponent,
+        map_center,
         SpriteBundle {
             texture: asset_server.load("map_outer_mask.png"),
             transform: Transform::from_xyz(0.0, 0.0, Layers::Mask.as_f32()),
@@ -79,7 +85,7 @@ fn remove_ready(mut commands: Commands, query: Query<Entity, With<ReadySign>>) {
     commands.entity(query.single()).despawn();
 }
 
-fn map_wrap(mut query: Query<&mut Location>, map: Res<Map>) {
+fn map_wrap(mut query: Query<&mut Location, Without<NoMapWrap>>, map: Res<Map>) {
     query.par_iter_mut().for_each(|mut location| {
         if location.x <= -2.0 {
             let dif = location.x + 2.0;

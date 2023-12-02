@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::common::app_state::{AppState, StateTimer};
-use crate::common::events::{Collision, CollisionPauseTimer, PelletEaten};
+use crate::common::events::{CollisionPauseTimer, GhostEaten, PelletEaten};
 use crate::common::layers::Layers;
 use crate::common::levels::Levels;
 use crate::common::sets::GameLoop;
@@ -115,7 +115,7 @@ impl Plugin for GhostPlugin {
         app.add_systems(OnEnter(AppState::LevelStart), spawn_ghosts);
         app.add_systems(OnEnter(AppState::MainGame), init_resources);
 
-        app.add_systems(FixedUpdate, advance_global_timer.before(GameLoop::Planning));
+        app.add_systems(FixedUpdate, ghost_eaten_system.before(GameLoop::Planning));
         app.add_systems(
             FixedUpdate,
             (
@@ -296,7 +296,7 @@ fn update_ghost_mode(
     global_ghost_mode: Res<GhostMode>,
     mut pellet_eaten_events: EventReader<PelletEaten>,
     mut ghost_pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
-    mut collision_events: EventReader<Collision>,
+    mut ghost_eaten_events: EventReader<GhostEaten>,
     mut frite_timer: ResMut<FriteTimer>,
     mut exit_home_timer: ResMut<ExitHomeTimer>,
     pause_timer: Res<CollisionPauseTimer>,
@@ -316,7 +316,7 @@ fn update_ghost_mode(
         ghost_pellet_eaten_counter.counter = 0;
     }
 
-    let collided_ghosts = collision_events
+    let eaten_ghosts = ghost_eaten_events
         .read()
         .map(|event| event.ghost)
         .collect::<Vec<_>>();
@@ -331,7 +331,7 @@ fn update_ghost_mode(
     for (mut mode, mut directions, location, ghost) in query.iter_mut() {
         match *mode {
             GhostMode::Frightened => {
-                if collided_ghosts.contains(ghost) {
+                if eaten_ghosts.contains(ghost) {
                     *mode = GhostMode::DeadPause;
                 } else if frite_timer_finished {
                     *mode = *global_ghost_mode;
@@ -833,17 +833,26 @@ fn update_global_ghost_mode(
 fn collision_detection(
     query: Query<(&Location, &Ghost, &GhostMode)>,
     player_query: Query<&Location, With<Player>>,
-    mut collision_events: EventWriter<Collision>,
+    mut ghost_eaten_events: EventWriter<GhostEaten>,
 ) {
     let player_location = player_query.single();
+    let number_of_fritened_ghosts = query
+        .iter()
+        .filter(|(_, _, mode)| {
+            matches!(
+                mode,
+                GhostMode::Frightened | GhostMode::Home(true) | GhostMode::HomeExit(true)
+            )
+        })
+        .count();
 
     for (location, ghost, mode) in query.iter() {
         let location_dif = *location - *player_location;
         let distance_squared = location_dif.length_squared();
-        if distance_squared < 0.5 * 0.5 {
-            collision_events.send(Collision {
+        if mode == &GhostMode::Frightened && distance_squared < 0.5 * 0.5 {
+            ghost_eaten_events.send(GhostEaten {
                 ghost: *ghost,
-                mode: *mode,
+                eaten_ghosts: 4 - number_of_fritened_ghosts,
             });
         }
     }
@@ -861,17 +870,53 @@ fn despawn_ghosts(
     }
 }
 
-fn advance_global_timer(
+#[derive(Component)]
+struct GhostEatenText;
+
+fn ghost_eaten_system(
+    mut commands: Commands,
+    ghost_query: Query<(&Ghost, &Location), Without<GhostEatenText>>,
+    eaten_text_query: Query<Entity, With<GhostEatenText>>,
     mut pause_timer: ResMut<CollisionPauseTimer>,
     time: Res<Time>,
-    mut collisions_events: EventReader<Collision>,
+    mut ghost_eaten_events: EventReader<GhostEaten>,
+    asset_server: Res<AssetServer>,
 ) {
-    pause_timer.0.tick(time.delta());
-
-    for event in collisions_events.read() {
-        if matches!(event.mode, GhostMode::Frightened) {
-            pause_timer.0.set_duration(Duration::from_secs(1));
-            pause_timer.0.reset();
+    if pause_timer.0.tick(time.delta()).just_finished() {
+        for entity in eaten_text_query.iter() {
+            commands.entity(entity).despawn_recursive();
         }
+    }
+
+    for event in ghost_eaten_events.read() {
+        pause_timer.0.set_duration(Duration::from_secs(1));
+        pause_timer.0.reset();
+
+        let text_location = ghost_query
+            .iter()
+            .find_map(|(ghost, location)| {
+                if *ghost == event.ghost {
+                    Some(*location)
+                } else {
+                    None
+                }
+            })
+            .expect("Ghost not found");
+        let text_asset = asset_server.load(match event.eaten_ghosts {
+            0 => "ghosts_death_points_200.png",
+            1 => "ghosts_death_points_400.png",
+            2 => "ghosts_death_points_800.png",
+            3 => "ghosts_death_points_1600.png",
+            _ => unreachable!(),
+        });
+        commands.spawn((
+            SpriteBundle {
+                texture: text_asset,
+                transform: Transform::from_xyz(0.0, 0.0, Layers::OnMapText.as_f32()),
+                ..default()
+            },
+            text_location,
+            GhostEatenText,
+        ));
     }
 }
