@@ -1,6 +1,7 @@
 use std::mem::discriminant;
 
 use bevy::{
+    app::AppExit,
     input::{keyboard::KeyboardInput, ButtonState},
     prelude::*,
 };
@@ -17,6 +18,7 @@ use crate::{
 enum Menu {
     Play,
     Hard_Mode(bool),
+    Exit,
 }
 
 #[derive(Resource)]
@@ -56,7 +58,7 @@ impl Plugin for MenuPlugin {
         app.add_systems(Update, update_menu.run_if(in_state(AppState::MainMenu)));
         app.insert_resource(MenuState {
             current: 0,
-            options: [Menu::Play, Menu::Hard_Mode(false)],
+            options: [Menu::Play, Menu::Hard_Mode(false), Menu::Exit],
         });
     }
 }
@@ -106,7 +108,7 @@ fn setup_menu(
                     ..default()
                 });
                 match option {
-                    Menu::Play => {}
+                    Menu::Play | Menu::Exit => {}
                     Menu::Hard_Mode(_) => {
                         let on_location =
                             Vec2::new(8.0 * ((option_name.len() + 4) as f32 / 2.0), 0.0);
@@ -143,6 +145,7 @@ fn update_menu(
     query: Query<(&Menu, &Children)>,
     mut query_arrow: Query<&mut Visibility, With<Arrow>>,
     mut query_toggle: Query<(&Toggle, &mut Visibility), Without<Arrow>>,
+    mut exit_event: EventWriter<AppExit>,
 ) {
     for event in key_event.read() {
         if event.state != ButtonState::Pressed {
@@ -167,6 +170,9 @@ fn update_menu(
                 Menu::Hard_Mode(state) => {
                     menu_state.set_current(Menu::Hard_Mode(!state));
                     levels.hard_mode = !state;
+                }
+                Menu::Exit => {
+                    exit_event.send(AppExit);
                 }
             },
             _ => {}
