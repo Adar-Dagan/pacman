@@ -100,7 +100,6 @@ fn timed_state_transition(
             AppState::LevelStart => next_state.set(AppState::MainGame),
             AppState::MainGame => (),
             AppState::LevelComplete => next_state.set(AppState::LevelStart),
-            AppState::GameOver => next_state.set(AppState::MainMenu),
         };
     }
 
@@ -110,7 +109,6 @@ fn timed_state_transition(
             AppState::LevelStart => 3,
             AppState::MainGame => return,
             AppState::LevelComplete => 6,
-            AppState::GameOver => return,
         };
         timer
             .0

@@ -12,6 +12,7 @@ use crate::{
 };
 
 #[derive(Component, Debug, EnumCount, EnumIter, Display, Clone, Copy)]
+#[allow(non_camel_case_types)]
 enum Menu {
     Play,
     Hard_Mode(bool),

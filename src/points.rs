@@ -4,9 +4,9 @@ use crate::{
     advance_level,
     common::{
         app_state::AppState,
-        events::{CollisionPauseTimer, GhostEaten, PelletEaten, PlayerAt},
+        events::{CollisionPauseTimer, GhostEaten, PelletEaten},
         layers::Layers,
-        levels::{self, Levels},
+        levels::Levels,
         sets::GameLoop,
     },
     map_render::NoMapWrap,

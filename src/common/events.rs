@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::ghosts::{Ghost, GhostMode};
+use crate::ghosts::Ghost;
 use crate::services::map::Location;
 
 #[derive(Event)]
