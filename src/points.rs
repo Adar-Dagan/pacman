@@ -129,6 +129,7 @@ impl Plugin for PointsPlugin {
         app.insert_resource(BonusTextTimer(Timer::from_seconds(3.0, TimerMode::Once)));
         app.add_systems(OnEnter(AppState::LevelStart), setup.after(advance_level));
         app.add_systems(OnExit(AppState::LevelComplete), despawn);
+        app.add_systems(OnEnter(AppState::MainMenu), despawn);
         app.add_systems(
             FixedUpdate,
             (
@@ -168,7 +169,15 @@ fn setup(
 
 fn despawn(
     mut commands: Commands,
-    query: Query<Entity, Or<(With<LevelCounter>, With<PointsText>)>>,
+    query: Query<
+        Entity,
+        Or<(
+            With<LevelCounter>,
+            With<PointsText>,
+            With<BonusText>,
+            With<BonusSymbol>,
+        )>,
+    >,
 ) {
     for entity in query.iter() {
         commands.entity(entity).despawn_recursive();
@@ -249,12 +258,17 @@ fn spawn_points(
                 parent.spawn((
                     Digit { digit: i },
                     SpriteBundle {
+                        texture: text_provider.get_image("0", Color::WHITE, asset_server),
                         transform: Transform::from_xyz(
                             -((i * 8) as f32),
                             0.0,
                             Layers::Text.as_f32(),
                         ),
-                        visibility: Visibility::Hidden,
+                        visibility: if i < 2 {
+                            Visibility::Inherited
+                        } else {
+                            Visibility::Hidden
+                        },
                         ..default()
                     },
                 ));

@@ -34,6 +34,7 @@ impl Plugin for MapRenderPlugin {
 
         app.add_systems(Update, flash_map.run_if(in_state(AppState::LevelComplete)));
         app.add_systems(OnExit(AppState::LevelComplete), despawn);
+        app.add_systems(OnEnter(AppState::MainMenu), despawn);
     }
 }
 

@@ -8,6 +8,7 @@ use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 
 use crate::{
     common::{app_state::AppState, levels::Levels},
+    init,
     services::{map::Location, text::TextProvider},
 };
 
@@ -50,7 +51,7 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::MainMenu), setup_menu);
+        app.add_systems(OnEnter(AppState::MainMenu), setup_menu.after(init));
         app.add_systems(OnExit(AppState::MainMenu), despawn_menu);
         app.add_systems(Update, update_menu.run_if(in_state(AppState::MainMenu)));
         app.insert_resource(MenuState {
@@ -65,8 +66,10 @@ fn setup_menu(
     mut text_provider: ResMut<TextProvider>,
     asset_server: Res<AssetServer>,
     mut selected_option: ResMut<MenuState>,
+    levels: Res<Levels>,
 ) {
     selected_option.current = 0;
+    selected_option.options[1] = Menu::Hard_Mode(levels.hard_mode);
 
     commands.spawn((
         Location::new(13.5, 23.0),

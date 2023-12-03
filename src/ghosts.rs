@@ -138,8 +138,9 @@ impl Plugin for GhostPlugin {
 
         app.add_systems(
             Update,
-            despawn_ghosts.run_if(in_state(AppState::LevelComplete)),
+            despawn_ghosts.run_if(in_state(AppState::LevelComplete).and_then(despawn_timer_check)),
         );
+        app.add_systems(OnEnter(AppState::MainMenu), despawn_ghosts);
 
         app.add_systems(
             Update,
@@ -858,15 +859,13 @@ fn collision_detection(
     }
 }
 
-fn despawn_ghosts(
-    mut commands: Commands,
-    query: Query<Entity, With<Ghost>>,
-    timer: Res<StateTimer>,
-) {
-    if timer.0.elapsed_secs() >= 3.0 {
-        for entity in query.iter() {
-            commands.entity(entity).despawn_recursive();
-        }
+fn despawn_timer_check(timer: Res<StateTimer>) -> bool {
+    timer.0.elapsed_secs() >= 3.0
+}
+
+fn despawn_ghosts(mut commands: Commands, query: Query<Entity, With<Ghost>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }
 

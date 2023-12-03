@@ -51,6 +51,7 @@ impl Plugin for PlayerPlugin {
 
         app.add_systems(OnEnter(AppState::LevelComplete), level_complete_sprite);
         app.add_systems(OnExit(AppState::LevelComplete), despawn);
+        app.add_systems(OnEnter(AppState::MainMenu), despawn);
     }
 }
 
@@ -236,6 +237,9 @@ fn level_complete_sprite(mut query: Query<&mut TextureAtlasSprite, With<Player>>
 }
 
 fn despawn(mut commands: Commands, query: Query<Entity, With<Player>>) {
+    if query.is_empty() {
+        return;
+    }
     let entity = query.single();
     commands.entity(entity).despawn_recursive();
 }

@@ -1,6 +1,10 @@
 use std::time::Duration;
 
-use bevy::{prelude::*, render::camera::ScalingMode};
+use bevy::{
+    input::{keyboard::KeyboardInput, ButtonState},
+    prelude::*,
+    render::camera::ScalingMode,
+};
 
 use common::{
     app_state::{AppState, StateTimer},
@@ -72,7 +76,16 @@ fn main() {
             (timed_state_transition, update_entities_location),
         )
         .add_systems(OnEnter(AppState::LevelStart), advance_level)
+        .add_systems(Update, go_to_menu)
+        .add_systems(OnEnter(AppState::MainMenu), init)
         .run();
+}
+
+pub fn init(mut collision_timer: ResMut<CollisionPauseTimer>, mut levels: ResMut<Levels>) {
+    collision_timer.0.set_duration(Duration::from_secs(0));
+    collision_timer.0.reset();
+
+    levels.reset();
 }
 
 fn camera_setup(mut commands: Commands) {
@@ -114,6 +127,7 @@ fn timed_state_transition(
             .0
             .set_duration(Duration::from_secs(secs_to_next_chage));
         timer.0.reset();
+        timer.0.unpause();
     }
 }
 
@@ -126,4 +140,22 @@ fn update_entities_location(mut query: Query<(&mut Transform, &Location), Change
         transform.translation.x = (location.x - 13.5) * 8.0;
         transform.translation.y = (location.y - 15.5) * 8.0;
     });
+}
+
+fn go_to_menu(
+    mut next_state: ResMut<NextState<AppState>>,
+    mut keyboard_events: EventReader<KeyboardInput>,
+    mut state_timer: ResMut<StateTimer>,
+) {
+    for event in keyboard_events.read() {
+        if let KeyboardInput {
+            state: ButtonState::Pressed,
+            key_code: Some(KeyCode::Escape),
+            ..
+        } = event
+        {
+            next_state.set(AppState::MainMenu);
+            state_timer.0.pause();
+        }
+    }
 }

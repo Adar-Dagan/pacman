@@ -10,6 +10,11 @@ pub struct Levels {
 }
 
 impl Levels {
+    pub fn reset(&mut self) {
+        self.advancements = 0;
+        self.current = 0;
+    }
+
     pub fn next(&mut self) {
         self.advancements += 1;
 
