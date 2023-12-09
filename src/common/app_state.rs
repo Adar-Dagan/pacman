@@ -7,6 +7,8 @@ pub enum AppState {
     LevelStart,
     MainGame,
     LevelComplete,
+    GameOver,
+    Leaderboard,
 }
 
 #[derive(Resource)]

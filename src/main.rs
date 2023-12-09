@@ -15,7 +15,9 @@ use common::{
 use services::{map::Location, text::TextProviderPlugin};
 
 mod common;
+mod game_over;
 mod ghosts;
+mod leaderboard;
 mod map_render;
 mod menu;
 mod pellets;
@@ -69,6 +71,8 @@ fn main() {
             ghosts::GhostPlugin,
             menu::MenuPlugin,
             points::PointsPlugin,
+            game_over::GameOverPlugin,
+            leaderboard::LeaderboardPlugin,
         ))
         .add_systems(Startup, (camera_setup, frame_rate_limiter))
         .add_systems(
@@ -76,7 +80,7 @@ fn main() {
             (timed_state_transition, update_entities_location),
         )
         .add_systems(OnEnter(AppState::LevelStart), advance_level)
-        .add_systems(Update, go_to_menu)
+        .add_systems(Update, escape_press)
         .add_systems(OnEnter(AppState::MainMenu), init)
         .run();
 }
@@ -109,19 +113,17 @@ fn timed_state_transition(
 ) {
     if timer.0.tick(time.delta()).just_finished() {
         match state.get() {
-            AppState::MainMenu => next_state.set(AppState::LevelStart),
             AppState::LevelStart => next_state.set(AppState::MainGame),
-            AppState::MainGame => (),
             AppState::LevelComplete => next_state.set(AppState::LevelStart),
+            _ => (),
         };
     }
 
     if let Some(next_state) = &next_state.0 {
         let secs_to_next_chage = match next_state {
-            AppState::MainMenu => return,
             AppState::LevelStart => 3,
-            AppState::MainGame => return,
             AppState::LevelComplete => 6,
+            _ => return,
         };
         timer
             .0
@@ -142,7 +144,8 @@ fn update_entities_location(mut query: Query<(&mut Transform, &Location), Change
     });
 }
 
-fn go_to_menu(
+fn escape_press(
+    state: Res<State<AppState>>,
     mut next_state: ResMut<NextState<AppState>>,
     mut keyboard_events: EventReader<KeyboardInput>,
     mut state_timer: ResMut<StateTimer>,
@@ -150,11 +153,16 @@ fn go_to_menu(
     for event in keyboard_events.read() {
         if let KeyboardInput {
             state: ButtonState::Pressed,
-            key_code: Some(KeyCode::Escape),
+            key_code: Some(KeyCode::Escape | KeyCode::Back),
             ..
         } = event
         {
-            next_state.set(AppState::MainMenu);
+            next_state.set(match state.get() {
+                AppState::MainMenu | AppState::GameOver | AppState::Leaderboard => {
+                    AppState::MainMenu
+                }
+                _ => AppState::GameOver,
+            });
             state_timer.0.pause();
         }
     }

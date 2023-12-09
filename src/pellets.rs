@@ -25,7 +25,7 @@ impl Plugin for PelletsPlugin {
         app.add_systems(OnEnter(AppState::LevelStart), spawn_pellets);
         app.add_systems(FixedUpdate, remove_pellets.in_set(Collisions));
         app.add_systems(Update, flash_power_pellets);
-        app.add_systems(OnEnter(AppState::MainMenu), despawn);
+        app.add_systems(OnEnter(AppState::GameOver), despawn);
 
         app.insert_resource(PowerPelletFlashTimer(Timer::from_seconds(
             0.5,

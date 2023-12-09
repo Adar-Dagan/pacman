@@ -41,7 +41,11 @@ impl TextProvider {
 
         let file_name = format!(
             "{}/{}_{:02x}{:02x}{:02x}.png",
-            TEMP_FONTS_DIR, text, r, g, b
+            TEMP_FONTS_DIR,
+            text.replace(":", "c"),
+            r,
+            g,
+            b
         );
 
         if let Some(handle) = self.cache.get(&file_name) {
@@ -51,7 +55,7 @@ impl TextProvider {
         let color = text_to_png::Color::new(r, g, b);
         let png = self
             .renderer
-            .render_text_to_png_data(&text, FontSize::FillHeight(7.0), color)
+            .render_text_to_png_data(&text, FontSize::Direct(10.0), color)
             .expect("Failed to render text");
 
         let path = format!("{}/{}", ASSET_DIR, file_name);
@@ -62,8 +66,18 @@ impl TextProvider {
         return handle;
     }
 
-    pub fn get_size(&self, text: &str) -> Vec2 {
-        return Vec2::new(8.0 * text.len() as f32, 7.0);
+    pub fn get_size<T: Display>(&self, text: T) -> Vec2 {
+        let text = format!("{}", text);
+        let text = text.to_uppercase();
+        let png = self
+            .renderer
+            .render_text_to_png_data(
+                text,
+                FontSize::FillHeight(7.0),
+                text_to_png::Color::default(),
+            )
+            .expect("Failed to measure text");
+        return Vec2::new(png.size.width as f32, png.size.height as f32);
     }
 }
 

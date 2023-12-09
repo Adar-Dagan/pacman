@@ -51,7 +51,7 @@ impl Plugin for PlayerPlugin {
 
         app.add_systems(OnEnter(AppState::LevelComplete), level_complete_sprite);
         app.add_systems(OnExit(AppState::LevelComplete), despawn);
-        app.add_systems(OnEnter(AppState::MainMenu), despawn);
+        app.add_systems(OnEnter(AppState::GameOver), despawn);
     }
 }
 

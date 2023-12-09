@@ -8,7 +8,7 @@ use bevy::{
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 
 use crate::{
-    common::{app_state::AppState, levels::Levels},
+    common::{app_state::AppState, events, levels::Levels},
     init,
     services::{map::Location, text::TextProvider},
 };
@@ -18,6 +18,7 @@ use crate::{
 enum Menu {
     Play,
     Hard_Mode(bool),
+    LeaderBoard,
     Exit,
 }
 
@@ -49,6 +50,9 @@ enum Toggle {
     Off,
 }
 
+#[derive(Resource)]
+struct InputDelayTimer(Timer);
+
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
@@ -58,8 +62,14 @@ impl Plugin for MenuPlugin {
         app.add_systems(Update, update_menu.run_if(in_state(AppState::MainMenu)));
         app.insert_resource(MenuState {
             current: 0,
-            options: [Menu::Play, Menu::Hard_Mode(false), Menu::Exit],
+            options: [
+                Menu::Play,
+                Menu::Hard_Mode(false),
+                Menu::LeaderBoard,
+                Menu::Exit,
+            ],
         });
+        app.insert_resource(InputDelayTimer(Timer::from_seconds(0.1, TimerMode::Once)));
     }
 }
 
@@ -69,9 +79,12 @@ fn setup_menu(
     asset_server: Res<AssetServer>,
     mut selected_option: ResMut<MenuState>,
     levels: Res<Levels>,
+    mut input_delay_timer: ResMut<InputDelayTimer>,
 ) {
     selected_option.current = 0;
     selected_option.options[1] = Menu::Hard_Mode(levels.hard_mode);
+
+    input_delay_timer.0.reset();
 
     commands.spawn((
         Location::new(13.5, 23.0),
@@ -103,35 +116,33 @@ fn setup_menu(
                         ..default()
                     },
                 ));
+
                 parent.spawn(SpriteBundle {
                     texture: text_provider.get_image(&option_name, Color::WHITE, &asset_server),
                     ..default()
                 });
-                match option {
-                    Menu::Play | Menu::Exit => {}
-                    Menu::Hard_Mode(_) => {
-                        let on_location =
-                            Vec2::new(8.0 * ((option_name.len() + 4) as f32 / 2.0), 0.0);
-                        parent.spawn((
-                            Toggle::On,
-                            SpriteBundle {
-                                texture: text_provider.get_image("ON", Color::GREEN, &asset_server),
-                                transform: Transform::from_translation(on_location.extend(0.0)),
-                                ..default()
-                            },
-                        ));
 
-                        let off_location =
-                            Vec2::new(8.0 * ((option_name.len() + 5) as f32 / 2.0) - 0.5, 0.0);
-                        parent.spawn((
-                            Toggle::Off,
-                            SpriteBundle {
-                                texture: text_provider.get_image("OFF", Color::RED, &asset_server),
-                                transform: Transform::from_translation(off_location.extend(0.0)),
-                                ..default()
-                            },
-                        ));
-                    }
+                if let Menu::Hard_Mode(_) = option {
+                    let on_location = Vec2::new(8.0 * ((option_name.len() + 4) as f32 / 2.0), 0.0);
+                    parent.spawn((
+                        Toggle::On,
+                        SpriteBundle {
+                            texture: text_provider.get_image("ON", Color::GREEN, &asset_server),
+                            transform: Transform::from_translation(on_location.extend(0.0)),
+                            ..default()
+                        },
+                    ));
+
+                    let off_location =
+                        Vec2::new(8.0 * ((option_name.len() + 5) as f32 / 2.0) - 0.5, 0.0);
+                    parent.spawn((
+                        Toggle::Off,
+                        SpriteBundle {
+                            texture: text_provider.get_image("OFF", Color::RED, &asset_server),
+                            transform: Transform::from_translation(off_location.extend(0.0)),
+                            ..default()
+                        },
+                    ));
                 }
             });
     }
@@ -146,7 +157,13 @@ fn update_menu(
     mut query_arrow: Query<&mut Visibility, With<Arrow>>,
     mut query_toggle: Query<(&Toggle, &mut Visibility), Without<Arrow>>,
     mut exit_event: EventWriter<AppExit>,
+    mut input_delay_timer: ResMut<InputDelayTimer>,
+    time: Res<Time>,
 ) {
+    if !input_delay_timer.0.tick(time.delta()).finished() {
+        key_event.clear();
+    }
+
     for event in key_event.read() {
         if event.state != ButtonState::Pressed {
             continue;
@@ -170,6 +187,9 @@ fn update_menu(
                 Menu::Hard_Mode(state) => {
                     menu_state.set_current(Menu::Hard_Mode(!state));
                     levels.hard_mode = !state;
+                }
+                Menu::LeaderBoard => {
+                    next_state.set(AppState::Leaderboard);
                 }
                 Menu::Exit => {
                     exit_event.send(AppExit);

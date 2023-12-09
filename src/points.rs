@@ -1,3 +1,5 @@
+use std::{fs::OpenOptions, io::BufRead, io::BufReader};
+
 use bevy::prelude::*;
 
 use crate::{
@@ -74,12 +76,12 @@ struct SymbolTimer(Timer);
 struct BonusTextTimer(Timer);
 
 #[derive(Resource)]
-struct Points {
-    score: u32,
-    high_score: u32,
+pub struct Points {
+    pub score: u32,
+    pub high_score: u32,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 enum PointsText {
     Still,
     Score,
@@ -129,7 +131,7 @@ impl Plugin for PointsPlugin {
         app.insert_resource(BonusTextTimer(Timer::from_seconds(3.0, TimerMode::Once)));
         app.add_systems(OnEnter(AppState::LevelStart), setup.after(advance_level));
         app.add_systems(OnExit(AppState::LevelComplete), despawn);
-        app.add_systems(OnEnter(AppState::MainMenu), despawn);
+        app.add_systems(OnEnter(AppState::GameOver), despawn);
         app.add_systems(
             FixedUpdate,
             (
@@ -158,6 +160,7 @@ fn setup(
     mut ghost_eaten_counter: ResMut<GhostsEatenCounter>,
     levels: Res<Levels>,
     mut pellets_eaten_counter: ResMut<PelletEatenCounter>,
+    mut points: ResMut<Points>,
 ) {
     pellets_eaten_counter.0 = 0;
     *ghost_eaten_counter = GhostsEatenCounter([None; 4], None);
@@ -165,6 +168,26 @@ fn setup(
     spawn_points(&mut commands, text_provider.into_inner(), &asset_server);
 
     spawn_level_counter(&mut commands, &levels, &asset_server);
+
+    let scores = OpenOptions::new().read(true).open("scores");
+
+    if let Ok(scores) = scores {
+        let reader = BufReader::new(scores);
+        points.high_score = reader
+            .lines()
+            .map(|line| {
+                line.expect("Error reading scores file")
+                    .split_once(':')
+                    .expect("Scores file is corrupt")
+                    .1
+                    .parse::<u32>()
+                    .expect("Scores file is corrupt")
+            })
+            .max()
+            .unwrap_or(0);
+    } else {
+        points.high_score = 0;
+    }
 }
 
 fn despawn(

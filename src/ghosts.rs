@@ -140,7 +140,7 @@ impl Plugin for GhostPlugin {
             Update,
             despawn_ghosts.run_if(in_state(AppState::LevelComplete).and_then(despawn_timer_check)),
         );
-        app.add_systems(OnEnter(AppState::MainMenu), despawn_ghosts);
+        app.add_systems(OnEnter(AppState::GameOver), despawn_ghosts);
 
         app.add_systems(
             Update,
