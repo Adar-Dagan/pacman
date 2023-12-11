@@ -1,6 +1,7 @@
 use std::{fs::OpenOptions, io::BufRead, io::BufReader};
 
 use bevy::prelude::*;
+use bevy_kira_audio::prelude::*;
 
 use crate::{
     advance_level,
@@ -400,6 +401,7 @@ fn bonus_symbol_collision(
     mut points: ResMut<Points>,
     asset_server: Res<AssetServer>,
     mut text_timer: ResMut<BonusTextTimer>,
+    audio: Res<Audio>,
 ) {
     let player_location = player_query.single();
     let (entity, location, bonus_symbol) = query.single_mut();
@@ -419,6 +421,8 @@ fn bonus_symbol_collision(
             },
         ));
         text_timer.0.reset();
+
+        audio.play(asset_server.load("sounds/eat_fruit.wav"));
     }
 }
 

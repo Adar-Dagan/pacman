@@ -6,12 +6,34 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.12.1", features = ["dynamic_linking"] }
+bevy = { version = "0.12.1", default-features = false, features = ["dynamic_linking", 
+    "animation",
+    "bevy_asset",
+    "bevy_gilrs",
+    "bevy_scene",
+    "bevy_winit",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_gltf",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_text",
+    "bevy_ui",
+    "multi-threaded",
+    "png",
+    "hdr",
+    "x11",
+    "bevy_gizmos",
+    "tonemapping_luts",
+    "default_font",
+    "webgl2",
+] }
 strum = { version = "0.25", features = ["derive"] }
 bevy_framepace = "0.14.0"
 derive_more = "0.99.17"
 fastrand = "2.0.1"
 text-to-png = "0.2.0"
+bevy_kira_audio = { version = "0.18.0", features = ["wav"] }
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

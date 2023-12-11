@@ -10,8 +10,6 @@ use crate::{
 #[derive(Component)]
 struct Entry {
     index: usize,
-    name: String,
-    score: u32,
 }
 
 #[derive(Resource)]
@@ -103,11 +101,7 @@ fn setup(
             .spawn((
                 Location::new(13.5, 23.0 - (i + 1) as f32 * 2.0),
                 SpatialBundle::default(),
-                Entry {
-                    index: i,
-                    name: "1234567890".to_string(),
-                    score: 1234567890,
-                },
+                Entry { index: i },
             ))
             .with_children(|parent| {
                 parent.spawn(get_entry_part(

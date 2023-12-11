@@ -5,6 +5,7 @@ use bevy::{
     prelude::*,
     render::camera::ScalingMode,
 };
+use bevy_kira_audio::prelude::*;
 
 use common::{
     app_state::{AppState, StateTimer},
@@ -14,6 +15,7 @@ use common::{
 };
 use services::{map::Location, text::TextProviderPlugin};
 
+mod background_sound;
 mod common;
 mod game_over;
 mod ghosts;
@@ -42,6 +44,7 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugins(AudioPlugin)
         .add_plugins(bevy_framepace::FramepacePlugin)
         .add_plugins(TextProviderPlugin)
         .insert_resource(StateTimer(
@@ -73,6 +76,7 @@ fn main() {
             points::PointsPlugin,
             game_over::GameOverPlugin,
             leaderboard::LeaderboardPlugin,
+            background_sound::BackgroundSoundPlugin,
         ))
         .add_systems(Startup, (camera_setup, frame_rate_limiter))
         .add_systems(
@@ -121,7 +125,13 @@ fn timed_state_transition(
 
     if let Some(next_state) = &next_state.0 {
         let secs_to_next_chage = match next_state {
-            AppState::LevelStart => 3,
+            AppState::LevelStart => {
+                if let AppState::MainMenu = state.get() {
+                    4
+                } else {
+                    2
+                }
+            }
             AppState::LevelComplete => 6,
             _ => return,
         };

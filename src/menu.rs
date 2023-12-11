@@ -5,10 +5,11 @@ use bevy::{
     input::{keyboard::KeyboardInput, ButtonState},
     prelude::*,
 };
+use bevy_kira_audio::prelude::*;
 use strum::{Display, EnumCount, EnumIter, IntoEnumIterator};
 
 use crate::{
-    common::{app_state::AppState, events, levels::Levels},
+    common::{app_state::AppState, levels::Levels},
     init,
     services::{map::Location, text::TextProvider},
 };
@@ -159,6 +160,8 @@ fn update_menu(
     mut exit_event: EventWriter<AppExit>,
     mut input_delay_timer: ResMut<InputDelayTimer>,
     time: Res<Time>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
 ) {
     if !input_delay_timer.0.tick(time.delta()).finished() {
         key_event.clear();
@@ -183,6 +186,7 @@ fn update_menu(
             Some(KeyCode::Return) => match menu_state.current() {
                 Menu::Play => {
                     next_state.set(AppState::LevelStart);
+                    audio.play(asset_server.load("sounds/game_start.wav"));
                 }
                 Menu::Hard_Mode(state) => {
                     menu_state.set_current(Menu::Hard_Mode(!state));

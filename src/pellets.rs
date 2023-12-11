@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_kira_audio::prelude::*;
 
 use crate::common::app_state::AppState;
 use crate::common::events::{PelletEaten, PlayerAt};
@@ -18,6 +19,12 @@ pub struct TotalPellets(pub usize);
 #[derive(Resource)]
 struct PowerPelletFlashTimer(Timer);
 
+#[derive(Resource)]
+struct MunchSounds {
+    audio_handles: [Handle<AudioSource>; 2],
+    current_index: usize,
+}
+
 pub struct PelletsPlugin;
 
 impl Plugin for PelletsPlugin {
@@ -32,13 +39,26 @@ impl Plugin for PelletsPlugin {
             TimerMode::Repeating,
         )));
         app.insert_resource(TotalPellets::default());
+
+        app.add_systems(Startup, load_sounds);
     }
+}
+
+fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let munch_1 = asset_server.load("sounds/munch_1.wav");
+    let munch_2 = asset_server.load("sounds/munch_2.wav");
+
+    commands.insert_resource(MunchSounds {
+        audio_handles: [munch_1, munch_2],
+        current_index: 0,
+    });
 }
 
 fn spawn_pellets(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut total_pellets: ResMut<TotalPellets>,
+    mut munch_sounds: ResMut<MunchSounds>,
 ) {
     const PELLETS_TEXT: &str = include_str!("pellets");
     const PARSING_ERROR: &str = "Error parsing pellets file";
@@ -77,6 +97,8 @@ fn spawn_pellets(
     }
 
     total_pellets.0 = PELLETS_TEXT.lines().count();
+
+    munch_sounds.current_index = 0;
 }
 
 fn remove_pellets(
@@ -85,14 +107,18 @@ fn remove_pellets(
     mut player_at_events: EventReader<PlayerAt>,
     mut pellets_eaten_events: EventWriter<PelletEaten>,
     mut next_game_state: ResMut<NextState<AppState>>,
+    mut munch_sounds: ResMut<MunchSounds>,
+    audio: Res<Audio>,
 ) {
     let player_locations = player_at_events
         .read()
         .map(|event| event.location)
         .collect::<Vec<_>>();
 
+    let mut pellet_eaten = Option::<PelletType>::None;
     for (entity, location, pellet_type) in query.iter() {
         if player_locations.contains(location) {
+            pellet_eaten = Some(*pellet_type);
             pellets_eaten_events.send(PelletEaten {
                 power: matches!(pellet_type, PelletType::Power),
             });
@@ -103,6 +129,10 @@ fn remove_pellets(
     let pellets_left = query.iter().count();
     if pellets_left == 0 {
         next_game_state.set(AppState::LevelComplete);
+    } else if let Some(PelletType::Regular) = pellet_eaten {
+        let audio_handle = munch_sounds.audio_handles[munch_sounds.current_index].clone();
+        audio.play(audio_handle);
+        munch_sounds.current_index = (munch_sounds.current_index + 1) % 2;
     }
 }
 

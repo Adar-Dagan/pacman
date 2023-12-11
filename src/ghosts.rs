@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
+use bevy_kira_audio::prelude::*;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::common::app_state::{AppState, StateTimer};
@@ -641,6 +642,9 @@ fn ghost_path_finder(
         possible_directions.get(0).copied()
     } else {
         let range = 0..possible_directions.len();
+        if range.is_empty() {
+            return None;
+        }
         let direction_index = fastrand::usize(range);
         possible_directions.get(direction_index).copied()
     }
@@ -835,6 +839,8 @@ fn collision_detection(
     query: Query<(&Location, &Ghost, &GhostMode)>,
     player_query: Query<&Location, With<Player>>,
     mut ghost_eaten_events: EventWriter<GhostEaten>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
 ) {
     let player_location = player_query.single();
     let number_of_fritened_ghosts = query
@@ -855,6 +861,8 @@ fn collision_detection(
                 ghost: *ghost,
                 eaten_ghosts: 4 - number_of_fritened_ghosts,
             });
+
+            audio.play(asset_server.load("sounds/eat_ghost.wav"));
         }
     }
 }
