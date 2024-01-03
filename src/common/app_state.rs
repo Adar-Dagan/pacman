@@ -7,8 +7,19 @@ pub enum AppState {
     LevelStart,
     MainGame,
     LevelComplete,
+    PlayerDied,
     GameOver,
     Leaderboard,
+}
+
+#[derive(States, Clone, Eq, PartialEq, Hash, Debug, Default)]
+pub enum DeadState {
+    Pause,
+    Animation,
+    Restart,
+    GameOver,
+    #[default]
+    NotDead,
 }
 
 #[derive(Resource)]

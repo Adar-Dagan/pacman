@@ -4,7 +4,8 @@ use bevy::prelude::*;
 use bevy_kira_audio::prelude::*;
 use strum::{EnumIter, IntoEnumIterator};
 
-use crate::common::app_state::{AppState, StateTimer};
+use crate::advance_level;
+use crate::common::app_state::{AppState, DeadState, StateTimer};
 use crate::common::events::{CollisionPauseTimer, GhostEaten, PelletEaten};
 use crate::common::layers::Layers;
 use crate::common::levels::Levels;
@@ -54,7 +55,7 @@ enum GhostSprite {
     Frightened,
 }
 
-#[derive(Component, EnumIter, Clone, Copy, PartialEq)]
+#[derive(Component, EnumIter, Clone, Copy, PartialEq, Debug)]
 pub enum Ghost {
     Blinky,
     Pinky,
@@ -111,10 +112,19 @@ impl Plugin for GhostPlugin {
         app.insert_resource(GlobalGhostModeTimer::default());
         app.insert_resource(FriteTimer(Timer::from_seconds(0.0, TimerMode::Once)));
         app.insert_resource(GhostPelletEatenCounter::default());
-        app.insert_resource(ExitHomeTimer::default());
+        app.insert_resource(ExitHomeTimer(Timer::from_seconds(
+            0.0,
+            TimerMode::Repeating,
+        )));
 
-        app.add_systems(OnEnter(AppState::LevelStart), spawn_ghosts);
-        app.add_systems(OnEnter(AppState::MainGame), init_resources);
+        app.add_systems(
+            OnEnter(AppState::LevelStart),
+            (init_level_resources.after(advance_level), spawn_ghosts).chain(),
+        );
+        app.add_systems(
+            OnEnter(DeadState::Restart),
+            (reset_resources_on_death, spawn_ghosts).chain(),
+        );
 
         app.add_systems(FixedUpdate, ghost_eaten_system.before(GameLoop::Planning));
         app.add_systems(
@@ -142,11 +152,15 @@ impl Plugin for GhostPlugin {
             despawn_ghosts.run_if(in_state(AppState::LevelComplete).and_then(despawn_timer_check)),
         );
         app.add_systems(OnEnter(AppState::GameOver), despawn_ghosts);
+        app.add_systems(OnEnter(DeadState::Animation), despawn_ghosts);
 
         app.add_systems(
             Update,
-            draw_ghosts
-                .run_if(in_state(AppState::MainGame).or_else(in_state(AppState::LevelStart))),
+            draw_ghosts.run_if(
+                in_state(AppState::MainGame)
+                    .or_else(in_state(AppState::LevelStart))
+                    .or_else(in_state(DeadState::Restart)),
+            ),
         );
     }
 }
@@ -155,6 +169,7 @@ fn spawn_ghosts(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    pellets_eaten_counter: Res<GhostPelletEatenCounter>,
 ) {
     if GHOST_DEBUG {
         spawn_ghost(
@@ -162,10 +177,17 @@ fn spawn_ghosts(
             &mut commands,
             &asset_server,
             &mut texture_atlases,
+            false,
         );
     } else {
         for ghost in Ghost::iter() {
-            spawn_ghost(ghost, &mut commands, &asset_server, &mut texture_atlases);
+            spawn_ghost(
+                ghost,
+                &mut commands,
+                &asset_server,
+                &mut texture_atlases,
+                pellets_eaten_counter.life_lost,
+            );
         }
     }
 }
@@ -175,6 +197,7 @@ fn spawn_ghost(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
+    life_lost: bool,
 ) {
     let (texture_path, location, directions, mode) = match ghost {
         Ghost::Blinky => (
@@ -187,7 +210,11 @@ fn spawn_ghost(
             "pinky_body.png",
             Location::new(13.5, 16.0),
             GhostDirections::new(Direction::Down),
-            GhostMode::HomeExit(false),
+            if life_lost {
+                GhostMode::Home(false)
+            } else {
+                GhostMode::HomeExit(false)
+            },
         ),
         Ghost::Inky => (
             "inky_body.png",
@@ -246,7 +273,7 @@ fn spawn_ghost(
         });
 }
 
-fn init_resources(
+fn init_level_resources(
     mut global_ghost_mode: ResMut<GhostMode>,
     mut global_mode_timer: ResMut<GlobalGhostModeTimer>,
     mut pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
@@ -269,6 +296,16 @@ fn init_resources(
     exit_home_timer
         .0
         .set_duration(Duration::from_secs(levels.ghost_exit_home_duration()));
+    exit_home_timer.0.reset();
+}
+
+fn reset_resources_on_death(
+    mut pellet_eaten_counter: ResMut<GhostPelletEatenCounter>,
+    mut exit_home_timer: ResMut<ExitHomeTimer>,
+) {
+    pellet_eaten_counter.life_lost = true;
+    pellet_eaten_counter.counter = 0;
+
     exit_home_timer.0.reset();
 }
 
@@ -323,12 +360,15 @@ fn update_ghost_mode(
         .map(|event| event.ghost)
         .collect::<Vec<_>>();
 
-    let inky_is_in_home = GHOST_DEBUG
-        || query
-            .iter()
-            .find(|(_, _, _, ghost)| **ghost == Ghost::Inky)
-            .map(|(mode, _, _, _)| matches!(*mode, GhostMode::Home(_) | GhostMode::HomeExit(_)))
-            .expect("Inky not found");
+    let (inky_is_in_home, pinky_is_in_home) = query
+        .iter()
+        .filter(|(_, _, _, ghost)| matches!(ghost, Ghost::Inky | Ghost::Pinky))
+        .map(|(mode, _, _, ghost)| (matches!(*mode, GhostMode::Home(_)), ghost))
+        .fold((false, false), |acc, (in_home, ghost)| match ghost {
+            Ghost::Inky => (in_home, acc.1),
+            Ghost::Pinky => (acc.0, in_home),
+            _ => unreachable!(),
+        });
 
     for (mut mode, mut directions, location, ghost) in query.iter_mut() {
         match *mode {
@@ -360,23 +400,20 @@ fn update_ghost_mode(
                     frightened = false;
                 }
 
-                match *ghost {
-                    Ghost::Inky => {
-                        if ghost_pellet_eaten_counter.counter >= levels.inky_home_exit_dots()
-                            || exit_home_timer_finished
-                        {
-                            *mode = GhostMode::HomeExit(frightened);
-                            ghost_pellet_eaten_counter.counter = 0;
-                        }
-                    }
-                    Ghost::Clyde => {
-                        if ghost_pellet_eaten_counter.counter >= levels.clyde_home_exit_dots()
-                            || (exit_home_timer_finished && !inky_is_in_home)
-                        {
-                            *mode = GhostMode::HomeExit(frightened);
-                        }
-                    }
-                    _ => unreachable!(),
+                let can_leave = match *ghost {
+                    Ghost::Blinky => unreachable!(),
+                    Ghost::Pinky => true,
+                    Ghost::Inky => !pinky_is_in_home,
+                    Ghost::Clyde => !pinky_is_in_home && !inky_is_in_home,
+                };
+
+                if can_leave
+                    && (ghost_pellet_eaten_counter.counter
+                        >= levels.home_exit_dots(*ghost, ghost_pellet_eaten_counter.life_lost)
+                        || exit_home_timer_finished)
+                {
+                    *mode = GhostMode::HomeExit(frightened);
+                    ghost_pellet_eaten_counter.counter = 0;
                 }
             }
             GhostMode::HomeExit(mut frightened) => {
@@ -841,6 +878,8 @@ fn collision_detection(
     mut ghost_eaten_events: EventWriter<GhostEaten>,
     asset_server: Res<AssetServer>,
     audio: Res<Audio>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut next_dead_state: ResMut<NextState<DeadState>>,
 ) {
     let player_location = player_query.single();
     let number_of_fritened_ghosts = query
@@ -856,13 +895,23 @@ fn collision_detection(
     for (location, ghost, mode) in query.iter() {
         let location_dif = *location - *player_location;
         let distance_squared = location_dif.length_squared();
-        if mode == &GhostMode::Frightened && distance_squared < 0.5 * 0.5 {
-            ghost_eaten_events.send(GhostEaten {
-                ghost: *ghost,
-                eaten_ghosts: 4 - number_of_fritened_ghosts,
-            });
 
-            audio.play(asset_server.load("sounds/eat_ghost.wav"));
+        if distance_squared < 0.5 * 0.5 {
+            match mode {
+                GhostMode::Frightened => {
+                    ghost_eaten_events.send(GhostEaten {
+                        ghost: *ghost,
+                        eaten_ghosts: 4 - number_of_fritened_ghosts,
+                    });
+
+                    audio.play(asset_server.load("sounds/eat_ghost.wav"));
+                }
+                GhostMode::Scatter | GhostMode::Chase => {
+                    next_state.set(AppState::PlayerDied);
+                    next_dead_state.set(DeadState::Pause);
+                }
+                _ => (),
+            }
         }
     }
 }

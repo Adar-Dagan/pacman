@@ -8,7 +8,7 @@ pub enum Layers {
     Ghosts,
     GhostsEyes,
     Mask,
-    Text,
+    HUD,
 }
 
 impl Layers {

@@ -7,7 +7,7 @@ use crate::{
     advance_level,
     common::{
         app_state::AppState,
-        events::{CollisionPauseTimer, GhostEaten, PelletEaten},
+        events::{CollisionPauseTimer, GetExtraLife, GhostEaten, PelletEaten},
         layers::Layers,
         levels::Levels,
         sets::GameLoop,
@@ -144,6 +144,7 @@ impl Plugin for PointsPlugin {
                 .in_set(GameLoop::Collisions)
                 .run_if(in_state(AppState::MainGame)),
         );
+        app.add_systems(OnExit(AppState::MainGame), despawn_symbol);
         app.add_systems(
             FixedUpdate,
             update_points
@@ -219,7 +220,7 @@ fn spawn_level_counter(commands: &mut Commands, levels: &Levels, asset_server: &
             Location::new(24.5 - (i * 2) as f32, -1.5),
             SpriteBundle {
                 texture: asset_server.load(symbol.asset()),
-                transform: Transform::from_xyz(0.0, 0.0, Layers::Text.as_f32()),
+                transform: Transform::from_xyz(0.0, 0.0, Layers::HUD.as_f32()),
                 ..default()
             },
         ));
@@ -237,7 +238,7 @@ fn spawn_points(
         Location::new(13.5, 33.0),
         SpriteBundle {
             texture: text_provider.get_image("High score", Color::WHITE, asset_server),
-            transform: Transform::from_xyz(0.0, 0.0, Layers::Text.as_f32()),
+            transform: Transform::from_xyz(0.0, 0.0, Layers::HUD.as_f32()),
             ..default()
         },
     ));
@@ -247,7 +248,7 @@ fn spawn_points(
             PointsText::HighScore,
             Location::new(15.0, 32.0),
             SpatialBundle {
-                transform: Transform::from_xyz(0.0, 0.0, Layers::Text.as_f32()),
+                transform: Transform::from_xyz(0.0, 0.0, Layers::HUD.as_f32()),
                 ..default()
             },
         ))
@@ -259,7 +260,7 @@ fn spawn_points(
                         transform: Transform::from_xyz(
                             -((i * 8) as f32),
                             0.0,
-                            Layers::Text.as_f32(),
+                            Layers::HUD.as_f32(),
                         ),
                         visibility: Visibility::Hidden,
                         ..default()
@@ -273,7 +274,7 @@ fn spawn_points(
             PointsText::Score,
             Location::new(6.0, 32.0),
             SpatialBundle {
-                transform: Transform::from_xyz(0.0, 0.0, Layers::Text.as_f32()),
+                transform: Transform::from_xyz(0.0, 0.0, Layers::HUD.as_f32()),
                 ..default()
             },
         ))
@@ -286,7 +287,7 @@ fn spawn_points(
                         transform: Transform::from_xyz(
                             -((i * 8) as f32),
                             0.0,
-                            Layers::Text.as_f32(),
+                            Layers::HUD.as_f32(),
                         ),
                         visibility: if i < 2 {
                             Visibility::Inherited
@@ -333,7 +334,10 @@ fn update_points(
     mut pellet_eaten_events: EventReader<PelletEaten>,
     mut ghost_eaten_events: EventReader<GhostEaten>,
     mut ghosts_eaten_counter: ResMut<GhostsEatenCounter>,
+    mut extra_life_events: EventWriter<GetExtraLife>,
 ) {
+    let points_before = points.score;
+
     for pellet_eaten in pellet_eaten_events.read() {
         if pellet_eaten.power {
             points.score += 50;
@@ -359,6 +363,10 @@ fn update_points(
 
     if points.score > points.high_score {
         points.high_score = points.score;
+    }
+
+    if points_before < 10000 && points.score >= 10000 {
+        extra_life_events.send(GetExtraLife);
     }
 }
 
@@ -457,5 +465,14 @@ fn remove_bonus_text(
 
     for entity in query.iter() {
         commands.entity(entity).despawn();
+    }
+}
+
+fn despawn_symbol(
+    mut commands: Commands,
+    query: Query<Entity, Or<(With<BonusText>, With<BonusSymbol>)>>,
+) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn_recursive();
     }
 }

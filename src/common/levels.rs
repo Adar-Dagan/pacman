@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::points::BonusSymbol;
+use crate::{ghosts::Ghost, points::BonusSymbol};
 
 #[derive(Resource, Default)]
 pub struct Levels {
@@ -144,18 +144,24 @@ impl Levels {
         .copied()
     }
 
-    pub fn inky_home_exit_dots(&self) -> usize {
-        match self.current {
-            1 => 30,
-            _ => 0,
-        }
-    }
-
-    pub fn clyde_home_exit_dots(&self) -> usize {
-        match self.current {
-            1 => 60,
-            2 => 50,
-            _ => 0,
+    pub fn home_exit_dots(&self, ghost: Ghost, life_lost: bool) -> usize {
+        match ghost {
+            Ghost::Pinky => {
+                assert!(life_lost);
+                return 7;
+            }
+            Ghost::Inky => match self.current {
+                _ if life_lost => 10,
+                1 => 30,
+                _ => 0,
+            },
+            Ghost::Clyde => match self.current {
+                _ if life_lost => 15,
+                1 => 60,
+                2 => 50,
+                _ => 0,
+            },
+            Ghost::Blinky => unreachable!(),
         }
     }
 

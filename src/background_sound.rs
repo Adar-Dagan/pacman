@@ -24,7 +24,6 @@ impl Plugin for BackgroundSoundPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, load_sounds);
         app.add_systems(OnEnter(AppState::LevelStart), zero_pellet_eaten);
-        app.add_systems(OnEnter(AppState::MainGame), start_sirens);
         app.add_systems(
             Update,
             change_background_sound.run_if(in_state(AppState::MainGame)),
@@ -45,16 +44,6 @@ fn load_sounds(mut background_sounds: ResMut<BackgroundSounds>, asset_server: Re
 
 fn zero_pellet_eaten(mut pellet_eaten: ResMut<PelletEatenCounter>) {
     pellet_eaten.0 = 0;
-}
-
-fn start_sirens(mut background_sounds: ResMut<BackgroundSounds>, audio: Res<Audio>) {
-    let handle = audio
-        .play(background_sounds.sirens[0].clone())
-        .looped()
-        .handle();
-
-    background_sounds.playing_instance = Some(handle);
-    background_sounds.currently_playing = Some(background_sounds.sirens[0].clone());
 }
 
 fn change_background_sound(
@@ -99,9 +88,13 @@ fn change_background_sound(
         background_sounds.sirens[siren].clone()
     };
 
-    if background_sound_handle != background_sounds.currently_playing.clone().unwrap() {
-        if let Some(instance) =
-            audio_instances.get_mut(&background_sounds.playing_instance.clone().unwrap())
+    if background_sounds.currently_playing.is_none()
+        || background_sound_handle != background_sounds.currently_playing.clone().unwrap()
+    {
+        if let Some(instance) = background_sounds
+            .playing_instance
+            .clone()
+            .and_then(|handle| audio_instances.get_mut(handle))
         {
             instance.stop(AudioTween::default());
         }

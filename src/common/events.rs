@@ -21,3 +21,6 @@ pub struct GhostEaten {
 
 #[derive(Resource)]
 pub struct CollisionPauseTimer(pub Timer);
+
+#[derive(Event)]
+pub struct GetExtraLife;

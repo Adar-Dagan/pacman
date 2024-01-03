@@ -8,8 +8,8 @@ use bevy::{
 use bevy_kira_audio::prelude::*;
 
 use common::{
-    app_state::{AppState, StateTimer},
-    events::{CollisionPauseTimer, GhostEaten, PelletEaten, PlayerAt},
+    app_state::{AppState, DeadState, StateTimer},
+    events::{CollisionPauseTimer, GetExtraLife, GhostEaten, PelletEaten, PlayerAt},
     levels::Levels,
     sets::GameLoop,
 };
@@ -59,8 +59,10 @@ fn main() {
         .insert_resource(Levels::default())
         .add_event::<PlayerAt>()
         .add_event::<PelletEaten>()
+        .add_event::<GetExtraLife>()
         .add_event::<GhostEaten>()
         .add_state::<AppState>()
+        .add_state::<DeadState>()
         .configure_sets(
             FixedUpdate,
             (GameLoop::Planning, GameLoop::Movement, GameLoop::Collisions)

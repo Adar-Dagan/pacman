@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::common::app_state::{AppState, StateTimer};
+use crate::common::app_state::{AppState, DeadState, StateTimer};
 use crate::common::layers::Layers;
 use crate::common::sets::GameLoop;
 use crate::services::map::{Location, Map};
@@ -22,8 +22,10 @@ impl Plugin for MapRenderPlugin {
         const MAP_TEXT: &str = include_str!("map");
 
         app.insert_resource(Map::parse(MAP_TEXT));
-        app.add_systems(OnEnter(AppState::LevelStart), render_map);
+        app.add_systems(OnEnter(AppState::LevelStart), (render_map, spawn_ready));
+        app.add_systems(OnEnter(DeadState::Restart), spawn_ready);
         app.add_systems(OnExit(AppState::LevelStart), remove_ready);
+        app.add_systems(OnExit(DeadState::Restart), remove_ready);
         app.add_systems(
             FixedUpdate,
             map_wrap
@@ -42,7 +44,6 @@ fn render_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
-    mut text_provider: ResMut<TextProvider>,
 ) {
     let map_center = Location::new(13.5, 15.0);
     let map_texture = asset_server.load("map.png");
@@ -70,7 +71,13 @@ fn render_map(
             ..default()
         },
     ));
+}
 
+fn spawn_ready(
+    mut commands: Commands,
+    mut text_provider: ResMut<TextProvider>,
+    asset_server: Res<AssetServer>,
+) {
     commands.spawn((
         ReadySign,
         Location::new(13.5, 13.0),
@@ -83,6 +90,9 @@ fn render_map(
 }
 
 fn remove_ready(mut commands: Commands, query: Query<Entity, With<ReadySign>>) {
+    if query.is_empty() {
+        return;
+    }
     commands.entity(query.single()).despawn();
 }
 

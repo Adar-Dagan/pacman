@@ -2,10 +2,13 @@ use bevy::{
     input::{keyboard::KeyboardInput, ButtonState},
     prelude::*,
 };
-use std::io::Write;
+use std::{io::Write, time::Duration};
 
 use crate::{
-    common::app_state::AppState,
+    common::{
+        app_state::{AppState, DeadState},
+        layers::Layers,
+    },
     points::Points,
     services::{map::Location, text::TextProvider},
 };
@@ -19,14 +22,29 @@ struct PlayerName(String);
 #[derive(Resource)]
 struct FlashTimer(Timer);
 
+#[derive(Component)]
+struct GameOverSign;
+
+#[derive(Resource, Default)]
+struct GameOverTimer(Timer);
+
 pub struct GameOverPlugin;
 
 impl Plugin for GameOverPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(FlashTimer(Timer::from_seconds(0.5, TimerMode::Repeating)));
-        app.add_systems(OnEnter(AppState::GameOver), setup);
+        app.insert_resource(GameOverTimer(Timer::from_seconds(3.0, TimerMode::Once)));
+        app.add_systems(OnEnter(AppState::GameOver), (setup, despawn_game_over));
         app.add_systems(Update, update.run_if(in_state(AppState::GameOver)));
         app.add_systems(OnExit(AppState::GameOver), (save_score, despawn).chain());
+        app.add_systems(
+            OnEnter(DeadState::GameOver),
+            (spawn_game_over, reset_game_over_timer),
+        );
+        app.add_systems(
+            Update,
+            goto_game_over_screen.run_if(in_state(DeadState::GameOver)),
+        );
     }
 }
 
@@ -35,7 +53,10 @@ fn setup(
     mut text_provider: ResMut<TextProvider>,
     asset_server: Res<AssetServer>,
     points: Res<Points>,
+    mut next_dead_state: ResMut<NextState<DeadState>>,
 ) {
+    next_dead_state.set(DeadState::NotDead);
+
     commands.spawn((
         Location::new(13.5, 23.0),
         SpriteBundle {
@@ -198,4 +219,41 @@ fn save_score(mut points: ResMut<Points>, player_name_query: Query<&PlayerName>)
     writeln!(scores_file, "{}:{}", player_name.0, points.score).expect("Failed to write score");
 
     points.score = 0;
+}
+
+fn spawn_game_over(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut text_provider: ResMut<TextProvider>,
+) {
+    commands.spawn((
+        GameOverSign,
+        Location::new(13.5, 13.0),
+        SpriteBundle {
+            texture: text_provider.get_image("Game over", Color::RED, &asset_server),
+            transform: Transform::from_xyz(0.0, 0.0, Layers::OnMapText.as_f32()),
+            ..default()
+        },
+    ));
+}
+
+fn despawn_game_over(mut commands: Commands, query: Query<Entity, With<GameOverSign>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+}
+
+fn reset_game_over_timer(mut game_over_timer: ResMut<GameOverTimer>) {
+    game_over_timer.0.set_duration(Duration::from_secs(3));
+    game_over_timer.0.reset();
+}
+
+fn goto_game_over_screen(
+    mut game_over_timer: ResMut<GameOverTimer>,
+    time: Res<Time>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    if game_over_timer.0.tick(time.delta()).just_finished() {
+        next_state.set(AppState::GameOver);
+    }
 }
