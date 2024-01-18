@@ -34,6 +34,8 @@ derive_more = "0.99.17"
 fastrand = "2.0.1"
 text-to-png = "0.2.0"
 bevy_kira_audio = { version = "0.18.0", features = ["wav"] }
+winit = "0.28"
+image = "0.24.8"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
@@ -42,3 +44,7 @@ opt-level = 1
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]
 opt-level = 3
+
+[build-dependencies]
+embed-resource = "1.6.3"
+
