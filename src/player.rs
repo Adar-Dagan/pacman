@@ -94,6 +94,7 @@ impl Plugin for PlayerPlugin {
             Update,
             death_animation.run_if(in_state(DeadState::Animation)),
         );
+        app.add_systems(OnExit(DeadState::Animation), despawn_death_animation);
         app.add_systems(OnEnter(DeadState::Restart), reset_restart_timer);
         app.add_systems(
             Update,
@@ -427,6 +428,20 @@ fn death_animation(
             }
         }
         _ => unreachable!(),
+    }
+}
+
+fn despawn_death_animation(
+    mut commands: Commands,
+    query: Query<Entity, With<DeathSprite>>,
+    mut audio_instances: ResMut<Assets<AudioInstance>>,
+    death_animation: ResMut<DeathAnimation>,
+) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+    if let Some(audio_instance) = audio_instances.get_mut(&death_animation.playing_handle) {
+        audio_instance.stop(AudioTween::default());
     }
 }
 

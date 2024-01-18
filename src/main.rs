@@ -164,6 +164,7 @@ fn update_entities_location(mut query: Query<(&mut Transform, &Location), Change
 fn escape_press(
     state: Res<State<AppState>>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut next_dead_state: ResMut<NextState<DeadState>>,
     mut keyboard_events: EventReader<KeyboardInput>,
     mut state_timer: ResMut<StateTimer>,
 ) {
@@ -180,6 +181,7 @@ fn escape_press(
                 }
                 _ => AppState::GameOver,
             });
+            next_dead_state.set(DeadState::default());
             state_timer.0.pause();
         }
     }
