@@ -69,13 +69,15 @@ fn setup(
         },
     ));
 
-    commands.spawn((
-        Location::new(13.5, 18.0),
-        SpriteBundle {
-            texture: text_provider.get_image("High Score!", Color::WHITE, &asset_server),
-            ..default()
-        },
-    ));
+    if points.score == points.high_score {
+        commands.spawn((
+            Location::new(13.5, 18.0),
+            SpriteBundle {
+                texture: text_provider.get_image("High Score!", Color::WHITE, &asset_server),
+                ..default()
+            },
+        ));
+    }
 
     commands.spawn((
         Location::new(13.5, 16.0),
