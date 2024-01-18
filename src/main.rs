@@ -33,6 +33,9 @@ mod services;
 
 const MAX_MOVE_SPEED: f64 = 78.0; // In pixel per second
 
+#[derive(Resource, Default)]
+pub struct StartGameSound(Handle<AudioInstance>);
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
@@ -61,6 +64,7 @@ fn main() {
             TimerMode::Once,
         )))
         .insert_resource(Levels::default())
+        .insert_resource(StartGameSound::default())
         .add_event::<PlayerAt>()
         .add_event::<PelletEaten>()
         .add_event::<GetExtraLife>()
@@ -167,6 +171,8 @@ fn escape_press(
     mut next_dead_state: ResMut<NextState<DeadState>>,
     mut keyboard_events: EventReader<KeyboardInput>,
     mut state_timer: ResMut<StateTimer>,
+    mut game_start_sound: ResMut<StartGameSound>,
+    mut audio_instances: ResMut<Assets<AudioInstance>>,
 ) {
     for event in keyboard_events.read() {
         if let KeyboardInput {
@@ -181,8 +187,14 @@ fn escape_press(
                 }
                 _ => AppState::GameOver,
             });
-            next_dead_state.set(DeadState::default());
             state_timer.0.pause();
+
+            next_dead_state.set(DeadState::default());
+
+            if let Some(audio_instance) = audio_instances.get_mut(&game_start_sound.0) {
+                audio_instance.stop(AudioTween::default());
+                game_start_sound.0 = Handle::default();
+            }
         }
     }
 }

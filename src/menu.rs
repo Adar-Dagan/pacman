@@ -12,6 +12,7 @@ use crate::{
     common::{app_state::AppState, levels::Levels},
     init,
     services::{map::Location, text::TextProvider},
+    StartGameSound,
 };
 
 #[derive(Component, Debug, EnumCount, EnumIter, Display, Clone, Copy)]
@@ -162,6 +163,7 @@ fn update_menu(
     time: Res<Time>,
     asset_server: Res<AssetServer>,
     audio: Res<Audio>,
+    mut start_game_sound: ResMut<StartGameSound>,
 ) {
     if !input_delay_timer.0.tick(time.delta()).finished() {
         key_event.clear();
@@ -186,7 +188,9 @@ fn update_menu(
             Some(KeyCode::Return) => match menu_state.current() {
                 Menu::Play => {
                     next_state.set(AppState::LevelStart);
-                    audio.play(asset_server.load("sounds/game_start.wav"));
+                    start_game_sound.0 = audio
+                        .play(asset_server.load("sounds/game_start.wav"))
+                        .handle();
                 }
                 Menu::Hard_Mode(state) => {
                     menu_state.set_current(Menu::Hard_Mode(!state));

@@ -402,7 +402,8 @@ fn death_animation(
         1 => {
             let audio_state = audio.state(&death_animation.playing_handle);
             if PlaybackState::Stopped == audio_state {
-                audio.play(asset_server.load("sounds/death_2.wav"));
+                death_animation.playing_handle =
+                    audio.play(asset_server.load("sounds/death_2.wav")).handle();
                 death_animation.counter += 1;
             }
         }
